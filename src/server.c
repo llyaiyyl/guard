@@ -9,8 +9,9 @@
 
 #include <pthread.h>
 
-#define SER_IP		"0.0.0.0"
-#define SER_PORT	9000
+#define SER_IP          "0.0.0.0"
+#define SER_PUSH_PORT   9000
+#define SER_PULL_PORT   9001
 
 typedef struct {
 	int fd_con;
@@ -67,22 +68,55 @@ static void * thread_connect(void * pdata)
 		}
 	}
 
-
 exit:
+    free(ptr_arg);
+    close(fd_con);
 	return (void *)0;
+}
+
+static void * thread_push(void * pdata)
+{
+    int fd_push, fd_con, ret;
+    pthread_t tid;
+
+    fd_push = *((int *)pdata);
+    while(1) {
+        fd_con = accept(fd_push, NULL, NULL);
+        if(-1 == fd_con) {
+            printf("accept error\n");
+            continue ;
+        }
+
+        // create a thread to process
+        thread_arg_t * ptr_arg;
+        ptr_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
+        ptr_arg->fd_con = fd_con;
+        ret = pthread_create(&tid, NULL, thread_connect, ptr_arg);
+        if(ret) {
+            printf("create thread error\n");
+            continue ;
+        }
+    }
+}
+
+static void * thread_pull(void * pdata)
+{
+
 }
 
 
 int main(int argc, char * argv[])
 {
-	int fd_ser, fd_con, ret;
+    int fd_push, fd_pull, ret;
 	struct sockaddr_in	ser_addr;
-	pthread_t tid;
+    pthread_t tid_push, tid_pull;
 	void * tret;
 
-	// create server and listen
-	fd_ser = socket(AF_INET, SOCK_STREAM, 0);
-	if(-1 == fd_ser) {
+    /*
+     * create server port to receive frame
+     */
+    fd_push = socket(AF_INET, SOCK_STREAM, 0);
+    if(-1 == fd_push) {
 		printf("can't create socket\n");
 		goto exit;
 	}
@@ -90,44 +124,77 @@ int main(int argc, char * argv[])
 	bzero(&ser_addr, sizeof(struct sockaddr_in));
 	ser_addr.sin_family = AF_INET;
 	ser_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	ser_addr.sin_port = htons(SER_PORT);
+    ser_addr.sin_port = htons(SER_PUSH_PORT);
 
-	ret = bind(fd_ser, (struct sockaddr *)&ser_addr, sizeof(struct sockaddr_in));
+    ret = bind(fd_push, (struct sockaddr *)&ser_addr, sizeof(struct sockaddr_in));
 	if(-1 == ret) {
 		printf("bind sockaddr error\n");
 		goto err0;
 	}
 
-	ret = listen(fd_ser, 5);
+    ret = listen(fd_push, 5);
 	if(-1 == ret) {
 		printf("listen error\n");
 		goto err0;
 	}
-	printf("guard-server listen: %s:%d\n", SER_IP, SER_PORT);
+    printf("guard-server push listen: %s:%d\n", SER_IP, SER_PUSH_PORT);
 
-	while(1) {
-		fd_con = accept(fd_ser, NULL, NULL);
-		if(-1 == fd_con) {
-			printf("accept error\n");
-			continue ;
-		}
+    /*
+     * create server port to send frame
+     */
+    fd_pull = socket(AF_INET, SOCK_STREAM, 0);
+    if(-1 == fd_pull) {
+        printf("can't create socket\n");
+        goto err0;
+    }
 
-		// create a thread to process
-		thread_arg_t * ptr_arg;
-		ptr_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
-		ptr_arg->fd_con = fd_con;
-		ret = pthread_create(&tid, NULL, thread_connect, ptr_arg);
-		if(ret) {
-			printf("create thread error\n");
-			continue ;
-		}
-		pthread_join(tid, &tret);
-		close(fd_con);
-		free(ptr_arg);
-	}
+    bzero(&ser_addr, sizeof(struct sockaddr_in));
+    ser_addr.sin_family = AF_INET;
+    ser_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    ser_addr.sin_port = htons(SER_PULL_PORT);
 
+    ret = bind(fd_pull, (struct sockaddr *)&ser_addr, sizeof(struct sockaddr_in));
+    if(-1 == ret) {
+        printf("bind sockaddr error\n");
+        goto err1;
+    }
+
+    ret = listen(fd_pull, 5);
+    if(-1 == ret) {
+        printf("listen error\n");
+        goto err1;
+    }
+    printf("guard-server pull listen: %s:%d\n", SER_IP, SER_PULL_PORT);
+
+
+    /*
+     * start thread
+     */
+    ret = pthread_create(&tid_push, NULL, thread_push, &fd_push);
+    if(ret){
+        printf("create thread error\n");
+        goto err1;
+    }
+    ret = pthread_create(&tid_pull, NULL, thread_pull, &fd_pull);
+    if(ret){
+        printf("create thread error\n");
+        goto err1;
+    }
+
+
+    while(1){
+        if(getchar() == 'q')
+            break;
+    }
+    pthread_cancel(tid_push);
+    pthread_cancel(tid_pull);
+    pthread_join(tid_push, NULL);
+    pthread_join(tid_pull, NULL);
+
+err1:
+    close(fd_pull);
 err0:
-	close(fd_ser);
+    close(fd_push);
 exit:
 	return 0;
 }
