@@ -114,9 +114,11 @@ int main(int argc, char * argv[])
         printf("usage:\n\t./guard-server ip port\n");
         return 0;
     }
+    sscanf(argv[2], "%u", &ser_ip);
+    ser_port = ser_ip;
     inet_pton(AF_INET, argv[1], &ser_ip);
     ser_ip = ntohl(ser_ip);
-    sscanf(argv[2], "%u", (uint32_t *)&ser_port);
+
 
     g_data.list_client = list_new();
 
@@ -126,6 +128,8 @@ int main(int argc, char * argv[])
     transparams.SetBindIP(ser_ip);
     transparams.SetPortbase(ser_port);
     ret = sess.Create(sessparams,&transparams);
+    log_error(ret);
+    ret = sess.SetMaximumPacketSize(50000);
     log_error(ret);
 
     printf("server run: 0.0.0.0:%d\n", transparams.GetPortbase());
