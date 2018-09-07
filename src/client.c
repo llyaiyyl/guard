@@ -45,7 +45,9 @@ typedef struct {
 
 static void cb_packet_dump(AVPacket * ptr_packet)
 {
-    printf("packet: %d bytes\n", ptr_packet->size);
+    printf("packet: %d bytes, pts: %ld, dts: %ld, duration: %ld\n", ptr_packet->size,
+           ptr_packet->pts, ptr_packet->dts,
+           ptr_packet->duration);
 }
 static void cb_frame_dump(AVFrame * ptr_frame)
 {
@@ -217,7 +219,7 @@ again:
             printf("connect error, wait 10s\n");
             sleep(10);
         }
-    } while(0 == ret);
+    } while(0 != ret);
     while(1) {
         recv_n = recv(fd, recv_buff, 1000, 0);
         if(-1 == recv_n) {
@@ -264,6 +266,7 @@ int main(int argc, char * argv[])
     memset(ptr_td, 0, sizeof(thread_data_t));
     ptr_td->type = THREAD_TYPE_VCAP_RTSP;
     strcpy(ptr_td->targ.url, argv[1]);
+    ptr_td->targ.pf_packet = cb_packet_dump;
     ret = pthread_create(&(ptr_td->tid), NULL, thread_videocap_rtsp, &(ptr_td->targ));
     if(0 != ret){
         printf("pthread_create error %d\n", ret);
