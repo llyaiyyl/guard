@@ -40,9 +40,7 @@ char msg[] = "We hold these truths to be self-evident, that all men are created 
              "design to reduce them under absolute despotism, it is their right, it is their duty, \n"
              "to throw off such government, and to provide new guards for their future security. \n"
              "Such has been the patient sufferance of these Colonies; and such is now the necessity, \n"
-             "which constrains them to alter their former systems of government. The history of the \n"
-             "present King of Great Britain is usurpations, all having in direct object tyranny over \n"
-             "these States. To prove this, let facts be submitted to a candid world.";
+             "which constrains them to alter their former systems of government.";
 
 int main(int argc, char * argv[])
 {
@@ -68,11 +66,11 @@ int main(int argc, char * argv[])
     ser_ip = ntohl(ser_ip);
 
     // create rtp session
-    sessparams.SetOwnTimestampUnit(1.0 / 10.0);
-    sessparams.SetAcceptOwnPackets(true);
-    sessparams.SetMaximumPacketSize(50000);
+    sessparams.SetOwnTimestampUnit(1.0 / 9000.0);
+    sessparams.SetMaximumPacketSize(1500);
+    sessparams.SetAcceptOwnPackets(false);
     sessparams.SetUsePollThread(true);
-    sessparams.SetSessionBandwidth(50000 * 30);
+
     transparams.SetPortbase(cli_port);
     ret = sess.Create(sessparams, &transparams);
     log_error(ret);
@@ -85,11 +83,9 @@ int main(int argc, char * argv[])
     log_error(ret);
     if(mode) {
         uint32_t num = 0;
-        uint8_t * msg_big = new uint8_t [30000];
-
         while(1) {
             // send video frame
-            ret = sess.SendPacket(msg_big, 1000);
+            ret = sess.SendPacket(msg, strlen(msg));
             log_error(ret);
             printf("%u: Sending %d packet\n", sess.GetLocalSSRC(), ++num);
             RTPTime::Wait(RTPTime(0, 50 * 1000));

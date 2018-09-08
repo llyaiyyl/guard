@@ -202,11 +202,11 @@ int main(int argc, char * argv[])
     g_data.list_client = list_new();
 
     // init and create rtp session
-    sessparams.SetOwnTimestampUnit(1.0 / 8000.0);
-    sessparams.SetAcceptOwnPackets(true);
-    sessparams.SetMaximumPacketSize(50000);
+    sessparams.SetOwnTimestampUnit(1.0 / 9000.0);
+    sessparams.SetMaximumPacketSize(1500);
+    sessparams.SetAcceptOwnPackets(false);
     sessparams.SetUsePollThread(true);
-    sessparams.SetSessionBandwidth(50000 * 30);
+
     transparams.SetBindIP(ser_ip);
     transparams.SetPortbase(ser_port);
     ret = sess.Create(sessparams, &transparams);
@@ -263,9 +263,10 @@ int main(int argc, char * argv[])
                             ptr_cd->type = CLI_TYPE_SEND;
 
                             // client push video frame
-                            printf("%u: get video frame: %u %lu bytes\n", pack->GetSSRC(),
+                            printf("%u: get video frame: %u %lu bytes, seqnum: %u\n", pack->GetSSRC(),
                                    pack->GetTimestamp(),
-                                   pack->GetPayloadLength());
+                                   pack->GetPayloadLength(),
+                                   pack->GetSequenceNumber());
 
                             g_data.vf.push(*(new Frame(pack->GetPayloadData(), pack->GetPayloadLength())));
                         }
