@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <pthread.h>
+#include <unistd.h>
+
 #include <iostream>
+#include <queue>
 
 #include "rtpsession.h"
 #include "rtpudpv4transmitter.h"
@@ -14,6 +18,7 @@
 
 #include "list.h"
 
+using namespace std;
 using namespace jrtplib;
 
 enum CLIENT_TYPE {
@@ -22,6 +27,35 @@ enum CLIENT_TYPE {
     CLI_TYPE_SEND,
     CLI_TYPE_RECV
 };
+
+class Frame
+{
+public:
+    Frame(uint8_t * data, size_t len)
+    {
+        m_len = len;
+        m_data = new uint8_t [m_len];
+        memcpy(m_data, data, m_len);
+    }
+    ~Frame()
+    {
+        delete [] m_data;
+    }
+
+    uint8_t * get_data()
+    {
+        return m_data;
+    }
+
+    size_t get_len()
+    {
+        return m_len;
+    }
+private:
+    size_t m_len;
+    uint8_t * m_data;
+};
+
 
 typedef struct {
     uint32_t ip;        // host order
@@ -33,8 +67,14 @@ typedef struct {
 } client_data_t;
 
 typedef struct {
+    pthread_t tid;
     list_t * list_client;
+    queue <Frame> vf;
+    RTPSession * psess;
 } g_data_t;
+
+
+
 
 
 static void log_error(int ret)
@@ -98,6 +138,45 @@ static client_data_t * insert_client_addr(list_t *list, uint32_t ip, uint16_t po
     return ptr_cd_ret;
 }
 
+static void * thread_send(void * pdata)
+{
+    list_iterator_t * it;
+    list_node_t * node;
+    client_data_t * ptr_cd;
+
+    g_data_t * pgd;
+    uint8_t * data;
+    int ret;
+    bool has_recv;
+
+    pgd = (g_data_t *)pdata;
+    while(1) {
+        usleep(10 * 1000);
+
+        // make sure queue <= 100
+        while(pgd->vf.size() > 100)
+            pgd->vf.pop();
+
+        // if has recv devices, send all video frame
+        has_recv = false;
+        it = list_iterator_new(pgd->list_client, LIST_HEAD);
+        while((node = list_iterator_next(it))) {
+            ptr_cd = (client_data_t *)node->val;
+            if(ptr_cd->type == CLI_TYPE_RECV) {
+                has_recv = true;
+                break;
+            }
+        }
+        list_iterator_destroy(it);
+
+        //
+        while(!pgd->vf.empty() && has_recv) {
+            pgd->psess->SendPacket(pgd->vf.front().get_data(), pgd->vf.front().get_len());
+            pgd->vf.pop();
+        }
+    }
+}
+
 int main(int argc, char * argv[])
 {
     g_data_t g_data;
@@ -123,20 +202,31 @@ int main(int argc, char * argv[])
     g_data.list_client = list_new();
 
     // init and create rtp session
-    sessparams.SetOwnTimestampUnit(1.0/10.0);
+    sessparams.SetOwnTimestampUnit(1.0 / 8000.0);
     sessparams.SetAcceptOwnPackets(true);
+    sessparams.SetMaximumPacketSize(50000);
+    sessparams.SetUsePollThread(true);
+    sessparams.SetSessionBandwidth(50000 * 30);
     transparams.SetBindIP(ser_ip);
     transparams.SetPortbase(ser_port);
-    ret = sess.Create(sessparams,&transparams);
+    ret = sess.Create(sessparams, &transparams);
     log_error(ret);
-    ret = sess.SetMaximumPacketSize(50000);
-    log_error(ret);
+
+    // set rtp session
+    sess.SetDefaultPayloadType(96);
+    sess.SetDefaultMark(false);
+    sess.SetDefaultTimestampIncrement(10);
+
+    g_data.psess = &sess;
+
+    // create send thread
+    ret = pthread_create(&g_data.tid, NULL, thread_send, &g_data);
+    if(0 != ret) {
+        printf("pthread_create error %d\n", ret);
+    }
 
     printf("server run: 0.0.0.0:%d\n", transparams.GetPortbase());
-    while(1){
-        ret = sess.Poll();
-        log_error(ret);
-
+    while(1) {
         sess.BeginDataAccess();
         if(sess.GotoFirstSourceWithData()) {
             do {
@@ -173,11 +263,13 @@ int main(int argc, char * argv[])
                             ptr_cd->type = CLI_TYPE_SEND;
 
                             // client push video frame
-                            printf("get video frame: %d %lu bytes\n", pack->GetTimestamp(), pack->GetPayloadLength());
-                            sess.SendPacket(pack->GetPayloadData(), pack->GetPayloadLength(), 10, false, 10);
+                            printf("%u: get video frame: %u %lu bytes\n", pack->GetSSRC(),
+                                   pack->GetTimestamp(),
+                                   pack->GetPayloadLength());
+
+                            g_data.vf.push(*(new Frame(pack->GetPayloadData(), pack->GetPayloadLength())));
                         }
                     }
-
                     sess.DeletePacket(pack);
                 }
             } while (sess.GotoNextSourceWithData());

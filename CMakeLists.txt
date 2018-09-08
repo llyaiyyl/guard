@@ -8,16 +8,18 @@ include_directories(~/bin/ffmpeg-4.0.2/include)
 include_directories(~/bin/zlib-1.2.11/include)
 include_directories(./list/)
 include_directories(~/bin/jrtplib-3.11.1/include/jrtplib3)
+include_directories(~/bin/jthread-1.3.3/include)
 
 # lib dir
 link_directories(~/bin/ffmpeg-4.0.2/lib)
 link_directories(~/bin/zlib-1.2.11/lib)
 link_directories(~/bin/jrtplib-3.11.1/lib)
+link_directories(~/bin/jthread-1.3.3/lib)
 
 aux_source_directory(./list/ LIST_SRCS)
 
 add_executable(guard-server src/server.cpp ${LIST_SRCS})
 add_executable(guard-client src/client.cpp ${LIST_SRCS})
 
-target_link_libraries(guard-server libjrtp.a)
-target_link_libraries(guard-client libjrtp.a libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m pthread)
+target_link_libraries(guard-server libjrtp.a libjthread.a pthread)
+target_link_libraries(guard-client libjrtp.a libjthread.a libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m pthread)

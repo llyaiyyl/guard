@@ -67,44 +67,46 @@ int main(int argc, char * argv[])
     inet_pton(AF_INET, argv[2], &ser_ip);
     ser_ip = ntohl(ser_ip);
 
-    sessparams.SetOwnTimestampUnit(1.0/10.0);
+    // create rtp session
+    sessparams.SetOwnTimestampUnit(1.0 / 10.0);
     sessparams.SetAcceptOwnPackets(true);
+    sessparams.SetMaximumPacketSize(50000);
+    sessparams.SetUsePollThread(true);
+    sessparams.SetSessionBandwidth(50000 * 30);
     transparams.SetPortbase(cli_port);
-    ret = sess.Create(sessparams,&transparams);
-    log_error(ret);
-    ret = sess.SetMaximumPacketSize(50000);
+    ret = sess.Create(sessparams, &transparams);
     log_error(ret);
 
+    // set rtp session
+    sess.SetDefaultPayloadType(96);
+    sess.SetDefaultMark(false);
+    sess.SetDefaultTimestampIncrement(10);
     ret = sess.AddDestination(RTPIPv4Address(ser_ip, ser_port));
     log_error(ret);
     if(mode) {
+        uint32_t num = 0;
+        uint8_t * msg_big = new uint8_t [30000];
+
         while(1) {
             // send video frame
-            printf("Sending packet...\n");
-            ret = sess.SendPacket(msg, strlen(msg), 0, false, 10);
+            ret = sess.SendPacket(msg_big, 1000);
             log_error(ret);
-
+            printf("%u: Sending %d packet\n", sess.GetLocalSSRC(), ++num);
             RTPTime::Wait(RTPTime(0, 50 * 1000));
         }
     } else {
-        ret = sess.SendPacket((void *)"pull", 4, 10, false,10);
+        ret = sess.SendPacket("pull", 4);
         log_error(ret);
         while(1) {
-            // recv video frame
-            ret = sess.Poll();
-            log_error(ret);
-
             sess.BeginDataAccess();
             if(sess.GotoFirstSourceWithData()) {
                 do {
                     RTPPacket *pack;
                     while ((pack = sess.GetNextPacket()) != NULL) {
-                        // You can examine the data here
-                        uint8_t * data;
-                        data = pack->GetPayloadData();
-                        data[pack->GetPayloadLength()] = 0;
-                        printf("recv video frame: %ld bytes %u\n", pack->GetPayloadLength(), pack->GetTimestamp());
-                        // printf("%s\n", data);
+                        printf("%u: recv video frame: %u %lu bytes\n", pack->GetSSRC(),
+                               pack->GetTimestamp(),
+                               pack->GetPayloadLength());
+
                         sess.DeletePacket(pack);
                     }
                 } while (sess.GotoNextSourceWithData());
