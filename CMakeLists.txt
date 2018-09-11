@@ -29,14 +29,16 @@ project(guard)
 
 #target_link_libraries(guard-server libjrtp.a libjthread.a pthread)
 #target_link_libraries(guard-client libjrtp.a libjthread.a libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m pthread)
-#target_link_libraries(app ${OpenCV_LIBRARIES})
 
-set(ASIO_INCLUDE_DIR ~/bin/boost_1_68_0/include)
-set(ASIO_LIB_DIR ~/bin/boost_1_68_0/lib)
-set(ASIO_LIBRARIES libboost_system.a libboost_thread.a)
+# include head file
+include_directories(~/bin/jrtplib-3.11.1/include/jrtplib3)
+include_directories(~/bin/jthread-1.3.3/include)
+include_directories(~/workspace/coco/src)
 
-include_directories(${ASIO_INCLUDE_DIR})
-link_directories(${ASIO_LIB_DIR})
+# lib dir
+link_directories(~/bin/jrtplib-3.11.1/lib)
+link_directories(~/bin/jthread-1.3.3/lib)
+link_directories(~/workspace/coco/build)
 
 aux_source_directory(./src/server SERVER_SRCS)
 aux_source_directory(./src/client CLIENT_SRCS)
@@ -44,9 +46,7 @@ aux_source_directory(./src/client CLIENT_SRCS)
 add_executable(guard-server ${SERVER_SRCS})
 add_executable(guard-client ${CLIENT_SRCS})
 
-target_link_libraries(guard-server ${ASIO_LIBRARIES} pthread)
-target_link_libraries(guard-client ${ASIO_LIBRARIES} pthread)
-# target_include_directories(guard-server PRIVATE ${ASIO_INCLUDE})
-# target_include_directories(guard-client PRIVATE ${ASIO_INCLUDE})
+target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a pthread)
+target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a pthread)
 
 
