@@ -1,5 +1,5 @@
-#ifndef SENDER_H
-#define SENDER_H
+#ifndef MANAGE_H
+#define MANAGE_H
 
 #include <iostream>
 #include <pthread.h>
@@ -16,22 +16,29 @@
 using namespace std;
 using namespace jrtplib;
 
-class sender
+class manage
 {
 public:
-    sender(uint16_t port);
-    ~sender();
+    /*
+     * init with local port
+     */
+    manage(int16_t port);
+    ~manage();
 
-    void run(void);
-    void wait(void);
-    void quit(void);
+    void run();
+    void stop();
+
 private:
     static void * thread_poll(void * pdata);
     static void log_error(int ret);
 
 private:
-    RTPSession m_sess;
-    pthread_t m_tid;
+    RTPSession sess_;
+    pthread_t tid_;
+    bool isrecv_;
+    bool loop_exit_;
 };
 
-#endif // SENDER_H
+#endif // RECEIVER_H
+
+

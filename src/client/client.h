@@ -1,5 +1,5 @@
-#ifndef RECEIVER_H
-#define RECEIVER_H
+#ifndef CLIENT_H
+#define CLIENT_H
 
 #include <iostream>
 #include <pthread.h>
@@ -13,21 +13,18 @@
 #include "rtppacket.h"
 #include "rtpsourcedata.h"
 
-#include "sender.h"
-
 using namespace std;
 using namespace jrtplib;
 
-class receiver
+class sender
 {
 public:
-    receiver(int16_t port);
-    ~receiver();
+    sender(uint16_t port);
+    ~sender();
 
-    void run();
-    void stop();
-    void set_sender(sender * p);
-
+    void run(void);
+    void wait(void);
+    void quit(void);
 private:
     static void * thread_poll(void * pdata);
     static void log_error(int ret);
@@ -35,10 +32,6 @@ private:
 private:
     RTPSession m_sess;
     pthread_t m_tid;
-    bool loop_exit_;
-    sender * sder_;
 };
 
-#endif // RECEIVER_H
-
-
+#endif // SENDER_H

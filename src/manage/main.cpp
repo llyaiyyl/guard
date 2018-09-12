@@ -1,8 +1,7 @@
 #include <iostream>
 #include <stdint.h>
-#include <stdio.h>
 #include "tcp.h"
-#include "client.h"
+#include "manage.h"
 
 using namespace std;
 
@@ -13,9 +12,10 @@ int main(int argc, char * argv[])
     char rbuff[1024];
     ssize_t rn;
     string req, rsp;
+    manage * mg;
 
     if(argc != 3) {
-        cout << "Usage: guard-client <ip> <port>" << endl;
+        cout << "Usage: guard-manage <ip> <port>" << endl;
         return -1;
     }
     sscanf(argv[2], "%u", &port);
@@ -36,21 +36,21 @@ int main(int argc, char * argv[])
             cout << "connect server ok." << endl;
 
             // ask server require a port
-            req = "push";
+            req = "pull";
             tcp::Write(fdsock, req.c_str(), req.size());
             rn = tcp::Read(fdsock, rbuff, 1024);
             rsp = string(rbuff, rn);
             cout << "dest port: " << rsp.c_str() << endl;
 
-            // upstream
-            sender * s = new sender(5000);
-            s->run();
-            s->wait();
+            mg = new manage(6000);
+            mg->run();
+
+            cin << rn;
+            mg->stop();
+            break;
         } else {
             cout << "connect server fail." << endl;
         }
-
-        sleep(3);
     }
 
     return 0;

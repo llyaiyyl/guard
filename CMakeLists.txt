@@ -42,11 +42,13 @@ link_directories(~/workspace/coco/build)
 
 aux_source_directory(./src/server SERVER_SRCS)
 aux_source_directory(./src/client CLIENT_SRCS)
+aux_source_directory(./src/manage MANAGE_SRCS)
 
 add_executable(guard-server ${SERVER_SRCS})
 add_executable(guard-client ${CLIENT_SRCS})
+add_executable(guard-manage ${MANAGE_SRCS})
 
 target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a pthread)
 target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a pthread)
-
+target_link_libraries(guard-manage libjrtp.a libjthread.a libcoco.a pthread)
 

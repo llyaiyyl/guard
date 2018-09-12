@@ -14,8 +14,6 @@
 #include "libswscale/swscale.h"
 #include "libavutil/imgutils.h"
 
-#include "list.h"
-
 enum THREAD_TYPE {
     THREAD_TYPE_NET_MANAGE = 1,
     THREAD_TYPE_VCAP_RTSP
