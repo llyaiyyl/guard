@@ -3,35 +3,26 @@
 
 #include <iostream>
 #include <pthread.h>
-
-#include "rtpsession.h"
-#include "rtpudpv4transmitter.h"
-#include "rtpipv4address.h"
-#include "rtpsessionparams.h"
-#include "rtperrors.h"
-#include "rtplibraryversion.h"
-#include "rtppacket.h"
-#include "rtpsourcedata.h"
+#include "session.h"
 
 using namespace std;
-using namespace jrtplib;
 
-class sender
+class client
 {
 public:
-    sender(uint16_t port);
-    ~sender();
+    client(string name, session * sess);
+    ~client();
 
     void run(void);
-    void wait(void);
-    void quit(void);
+    const char * get_name();
 private:
     static void * thread_poll(void * pdata);
-    static void log_error(int ret);
 
 private:
-    RTPSession m_sess;
-    pthread_t m_tid;
+    session * sess_;
+    pthread_t tid_;
+    bool loop_exit_;
+    string name_;
 };
 
 #endif // SENDER_H

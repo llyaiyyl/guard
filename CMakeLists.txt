@@ -33,22 +33,25 @@ project(guard)
 # include head file
 include_directories(~/bin/jrtplib-3.11.1/include/jrtplib3)
 include_directories(~/bin/jthread-1.3.3/include)
+include_directories(~/bin/jsoncpp-1.8.4/include)
 include_directories(~/workspace/coco/src)
+include_directories(./src/)
 
 # lib dir
 link_directories(~/bin/jrtplib-3.11.1/lib)
 link_directories(~/bin/jthread-1.3.3/lib)
+link_directories(~/bin/jsoncpp-1.8.4/lib)
 link_directories(~/workspace/coco/build)
 
 aux_source_directory(./src/server SERVER_SRCS)
 aux_source_directory(./src/client CLIENT_SRCS)
 aux_source_directory(./src/manage MANAGE_SRCS)
 
-add_executable(guard-server ${SERVER_SRCS})
-add_executable(guard-client ${CLIENT_SRCS})
-add_executable(guard-manage ${MANAGE_SRCS})
+add_executable(guard-server ${SERVER_SRCS} ./src/session.cpp)
+add_executable(guard-client ${CLIENT_SRCS} ./src/session.cpp)
+add_executable(guard-manage ${MANAGE_SRCS} ./src/session.cpp)
 
-target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a pthread)
-target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a pthread)
-target_link_libraries(guard-manage libjrtp.a libjthread.a libcoco.a pthread)
+target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
+target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
+target_link_libraries(guard-manage libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
 

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include "tcp.h"
 #include "manage.h"
+#include "session.h"
 
 using namespace std;
 
@@ -18,7 +19,8 @@ int main(int argc, char * argv[])
         cout << "Usage: guard-manage <ip> <port>" << endl;
         return -1;
     }
-    sscanf(argv[2], "%u", &port);
+    sscanf(argv[2], "%d", &fdsock);
+    port = fdsock;
     cout << "Connect to " << argv[1] << ":" << port << endl;
 
     fdsock = tcp::Connect(argv[1], port);
@@ -42,12 +44,16 @@ int main(int argc, char * argv[])
             rsp = string(rbuff, rn);
             cout << "dest port: " << rsp.c_str() << endl;
 
-            mg = new manage(6000);
+            session * sess = session::create(argv[1], (uint16_t)6000, (uint16_t)6002);
+            mg = new manage(sess);
             mg->run();
 
-            cin << rn;
-            mg->stop();
-            break;
+            // wait quit
+            cin >> rn;
+
+            mg->quit();
+            delete mg;
+            delete sess;
         } else {
             cout << "connect server fail." << endl;
         }
