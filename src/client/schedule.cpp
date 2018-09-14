@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "json/json.h"
 #include "schedule.h"
 
 using namespace std;
@@ -9,7 +10,6 @@ using namespace std;
 schedule::schedule(int fdcon)
 {
     fdcon_ = fdcon;
-    pc_num_ = 0;
 }
 
 schedule::~schedule()
@@ -17,16 +17,24 @@ schedule::~schedule()
 
 }
 
-void schedule::reg(client *c)
+void schedule::reg(const client &c)
 {
-    pc_arry_[pc_num_] = c;
-    pc_num_++;
+    list_client_.push_back(c);
 }
 
 void schedule::run()
 {
     ssize_t n;
     char rbuff[1024];
+    string str;
+    list<client>::iterator it;
+    Json::Value root;
+    Json::Reader reader;
+
+    // start all client
+    for(it = list_client_.begin(); it != list_client_.end(); it++) {
+        it->run();
+    }
 
     cout << "schedule runing..." << endl;
     while(1) {
@@ -38,16 +46,17 @@ void schedule::run()
             printf("server close\n");
             close(fdcon_);
 
-            // close all client and exit
-            for(int i = 0; i < pc_num_; i++) {
-                printf("%s will exit\n", pc_arry_[i]->get_name());
-                delete pc_arry_[i];
+            // close all client
+            for(it = list_client_.begin(); it != list_client_.end(); it++) {
+                it->quit();
+                cout << it->get_name() << " quit" << endl;
             }
+            list_client_.clear();
 
             return ;
         } else {
-            rbuff[n] = 0;
-            cout << rbuff << endl;
+            reader.parse(rbuff, rbuff + n, root);
+            cout << root.toStyledString() << endl;
         }
     }
 }

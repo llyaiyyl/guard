@@ -12,8 +12,6 @@ int main(int argc, char * argv[])
 {
     int32_t fdsock;
     uint16_t port;
-    char rbuff[1024];
-    ssize_t rn;
     string req, rsp;
     uint32_t dst_port;
     Json::Value root;
@@ -28,6 +26,7 @@ int main(int argc, char * argv[])
     port = fdsock;
     cout << "Connect to " << argv[1] << ":" << port << endl;
 
+again:
     // connect to server
     fdsock = tcp::Connect(argv[1], port);
     if(-1 == fdsock) {
@@ -35,46 +34,44 @@ int main(int argc, char * argv[])
         return -1;
     }
 
+    root.clear();
     root["cmd"] = "ping";
-    req = root.toStyledString();
-    tcp::Write(fdsock, req.c_str(), req.size());
-    rn = tcp::Read(fdsock, rbuff, 1024);
-    rsp = string(rbuff, rn);
+    tcp::Write(fdsock, root.toStyledString());
+    rsp = tcp::Read(fdsock, 1024);
     reader.parse(rsp, root);
     if(string("pong") == root["cmd"].asString()) {
         cout << "connect server ok." << endl;
 
+        // create a schedule, to monitor all client
         schedule sch(fdsock);
-
         // find all video frame, push to server
-
         while(1) {
             // require a port from server
+            root.clear();
             root["cmd"] = "push";
-            root["sn"] = "cam0";
-            req = root.toStyledString();
-            tcp::Write(fdsock, req.c_str(), req.size());
-            rn = tcp::Read(fdsock, rbuff, 1024);
-            rsp = string(rbuff, rn);
+            root["sn"] = "000000";
+            tcp::Write(fdsock, root.toStyledString());
+            rsp = tcp::Read(fdsock, 1024);
             reader.parse(rsp, root);
             dst_port = root["port"].asUInt();
             if(dst_port) {
                 // upstream
                 session * sess = session::create(argv[1], (uint16_t)dst_port, (uint16_t)(dst_port + 2));
-                client * c = new client(string("cam0"), sess);
-                c->run();
-                cout << "push stream to " << argv[1] << ":" << dst_port << endl;
+                sch.reg(client(string("000000"), sess));
 
-                sch.reg(c);
+                cout << "register client: 000000" << endl;
             } else {
                 cout << "request a port error" << endl;
                 return 1;
             }
-
             break;
         }
-
         sch.run();
+
+        cout << "connect server error, 10s later restart" << endl;
+        sleep(10);
+        close(fdsock);
+        goto again;
     } else {
         cout << "connect server fail." << endl;
     }

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -7,22 +8,37 @@
 
 using namespace std;
 
+
+/*
+ *
+ * server_data
+ *
+ */
 server_data::server_data(int fd)
 {
-    ipstr_[0] = 0;
-    port_ = 0;
+    struct sockaddr_in saddr;
+    socklen_t slen;
+    char buff[24];
+
+    slen = sizeof(struct sockaddr_in);
+    bzero(&saddr, slen);
+    if(0 == getpeername(fd, (struct sockaddr *)&saddr, &slen)) {
+        port_ = ntohs(saddr.sin_port);
+        inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr_, INET_ADDRSTRLEN);
+    } else {
+        ipstr_[0] = 0;
+        port_ = 0;
+    }
 
     fd_ = fd;
+    status_ = sd_init;
+
+    sprintf(buff, "%s:%d", ipstr_, port_);
+    client_addr_ = string(buff);
 }
 
 server_data::~server_data()
 {
-}
-
-void server_data::set_addr(const char *ipstr, uint16_t port)
-{
-    strcpy(ipstr_, ipstr);
-    port_ = port;
 }
 
 const char * server_data::get_ipstr()
@@ -30,20 +46,69 @@ const char * server_data::get_ipstr()
     return ipstr_;
 }
 
+string server_data::get_client_addr()
+{
+    return client_addr_;
+}
+
 uint16_t server_data::get_port()
 {
     return port_;
 }
 
-int server_data::get_fd()
+server_data * server_data::get_this()
 {
-    return fd_;
+    return this;
 }
 
 
 
 
 
+
+/*
+ * client data
+ */
+client_data::client_data(int fd)
+{
+    struct sockaddr_in saddr;
+    socklen_t slen;
+    char buff[24];
+
+    slen = sizeof(struct sockaddr_in);
+    bzero(&saddr, slen);
+    if(0 == getpeername(fd, (struct sockaddr *)&saddr, &slen)) {
+        port_ = ntohs(saddr.sin_port);
+        inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr_, INET_ADDRSTRLEN);
+    } else {
+        ipstr_[0] = 0;
+        port_ = 0;
+    }
+
+    fd_ = fd;
+    sprintf(buff, "%s:%d", ipstr_, port_);
+    client_addr_ = string(buff);
+}
+
+client_data::~client_data()
+{
+
+}
+
+const char * client_data::get_ipstr()
+{
+    return ipstr_;
+}
+
+string client_data::get_client_addr()
+{
+    return client_addr_;
+}
+
+uint16_t client_data::get_port()
+{
+    return port_;
+}
 
 
 
@@ -62,8 +127,6 @@ server::server()
     s_recv_ = NULL;
 
     haspull = false;
-
-    pthread_create(&tid_, NULL, thread_poll, this);
 }
 
 server::~server()
@@ -71,49 +134,43 @@ server::~server()
 
 }
 
+void server::run()
+{
+    pthread_create(&tid_, NULL, thread_poll, this);
+}
+
 
 void server::on_connect(int &fd, void **pdata)
 {
-    struct sockaddr_in saddr;
-    socklen_t slen;
-    char ipstr[INET_ADDRSTRLEN];
-    uint16_t port;
-    server_data * sd;
+    client_data * cd;
 
-    slen = sizeof(struct sockaddr_in);
-    bzero(&saddr, slen);
-    if(0 == getpeername(fd, (struct sockaddr *)&saddr, &slen)) {
-        port = ntohs(saddr.sin_port);
-        inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr, INET_ADDRSTRLEN);
-    } else {
-        ipstr[0] = 0;
-        port = 0;
-    }
 
     // save server data to private
-    sd = new server_data(fd);
-    sd->set_addr(ipstr, port);
-    *pdata = sd;
+    cd = new client_data(fd);
+    *pdata = cd;
 
-    std::cout << "client connect: " << ipstr << ":" << port << std::endl;
+    // add server data to client list
+    list_sd_.push_back(server_data(fd));
+
+    std::cout << "client connect: " << cd->get_ipstr() << ":" << cd->get_port() << std::endl;
 }
 
 void server::on_close(int &fd, void *pdata)
 {
-    server_data * ptr = (server_data *)pdata;
+    client_data * cd = (client_data *)pdata;
+    server_data * sd;
 
-    if(this->s_recv_) {
-        delete this->s_recv_;
-        this->s_recv_ = NULL;
-        push_num_--;
+    sd = get_sd(cd->get_client_addr());
+    if(sd) {
+        // delete this client all session
+    } else {
+        // can find client data
     }
 
-    if(this->s_send_) {
-        delete this->s_send_;
-        this->s_send_ = NULL;
-        this->haspull = false;
-        pull_num_--;
-    }
+    // remove this client
+    // list_sd_.remove(*ptr);
+
+    // delete client private data;
 
     std::cout << "on_close" << std::endl;
 }
@@ -194,6 +251,19 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             fd = -1;
         }
     }
+}
+
+server_data * server::get_sd(const string &addr)
+{
+    list<server_data>::iterator it;
+
+    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
+        if(addr == it->get_client_addr()) {
+            return it->get_this();
+        }
+    }
+
+    return NULL;
 }
 
 void * server::thread_poll(void *pdata)

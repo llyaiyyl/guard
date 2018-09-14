@@ -13,21 +13,36 @@ client::client(string name, session *sess)
 
 client::~client()
 {
-    loop_exit_ = true;
-    pthread_join(tid_, NULL);
+    if(tid_) {
+        loop_exit_ = true;
+        pthread_join(tid_, NULL);
 
-    tid_ = 0;
-    loop_exit_ = false;
+        tid_ = 0;
+        loop_exit_ = false;
 
-    delete sess_;
-    sess_ = NULL;
+        delete sess_;
+        sess_ = NULL;
+    }
 }
 
 void client::run(void)
 {
     pthread_create(&tid_, NULL, thread_poll, this);
-
     cout << "client " << name_ << " has run" << endl;
+}
+
+void client::quit(void)
+{
+    if(tid_) {
+        loop_exit_ = true;
+        pthread_join(tid_, NULL);
+
+        tid_ = 0;
+        loop_exit_ = false;
+
+        delete sess_;
+        sess_ = NULL;
+    }
 }
 
 const char *client::get_name()

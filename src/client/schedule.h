@@ -15,12 +15,11 @@ public:
     schedule(int fdcon);
     ~schedule();
 
-    void reg(client * c);
+    void reg(const client &c);
     void run();
 private:
     int fdcon_;
-    client * pc_arry_[10];
-    int pc_num_;
+    list<client> list_client_;
 };
 
 #endif // SCHEDULE_H

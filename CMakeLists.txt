@@ -45,13 +45,31 @@ link_directories(~/workspace/coco/build)
 
 aux_source_directory(./src/server SERVER_SRCS)
 aux_source_directory(./src/client CLIENT_SRCS)
-aux_source_directory(./src/manage MANAGE_SRCS)
+
+set(CMAKE_CXX_STANDARD 11)
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_executable(guard-server ${SERVER_SRCS} ./src/session.cpp)
 add_executable(guard-client ${CLIENT_SRCS} ./src/session.cpp)
-add_executable(guard-manage ${MANAGE_SRCS} ./src/session.cpp)
 
 target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
 target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
-target_link_libraries(guard-manage libjrtp.a libjthread.a libcoco.a libjsoncpp.a pthread)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

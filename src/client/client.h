@@ -14,6 +14,7 @@ public:
     ~client();
 
     void run(void);
+    void quit(void);
     const char * get_name();
 private:
     static void * thread_poll(void * pdata);

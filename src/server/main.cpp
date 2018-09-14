@@ -13,9 +13,10 @@ int main(int argc, char * argv[])
     server ser;
 
     fdsock = tcp::Listen(4000);
+    ser.run();
+    r = reactor::create(fdsock, 10, ser);
     cout << "server run: 0.0.0.0:4000" << endl;
 
-    r = reactor::create(fdsock, 10, ser);
     r->run();
 
     return 0;
