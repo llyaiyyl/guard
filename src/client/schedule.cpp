@@ -26,10 +26,10 @@ void schedule::run()
 {
     ssize_t n;
     char rbuff[1024];
-    string str;
     list<client>::iterator it;
     Json::Value root;
-    Json::Reader reader;
+    Json::CharReaderBuilder builder;
+    Json::CharReader * creader = builder.newCharReader();
 
     // start all client
     for(it = list_client_.begin(); it != list_client_.end(); it++) {
@@ -55,7 +55,7 @@ void schedule::run()
 
             return ;
         } else {
-            reader.parse(rbuff, rbuff + n, root);
+            creader->parse(rbuff, rbuff + n, &root, NULL);
             cout << root.toStyledString() << endl;
         }
     }
