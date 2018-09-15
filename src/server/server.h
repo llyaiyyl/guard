@@ -93,6 +93,7 @@ private:
     std::list<server_data> list_sd_;         // save all connect client
 
     uint16_t port_base_;
+    pthread_mutex_t lock_;
 };
 
 #endif // SERVER_H

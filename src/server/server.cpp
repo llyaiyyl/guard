@@ -217,11 +217,14 @@ server::server()
     creader_ = builder.newCharReader();
 
     port_base_ = 5000;
+
+    pthread_mutex_init(&lock_, NULL);
 }
 
 server::~server()
 {
     delete creader_;
+    pthread_mutex_destroy(&lock_);
 }
 
 void server::run()
@@ -239,7 +242,9 @@ void server::on_connect(int &fd, void **pdata)
 
 void server::on_close(int &fd, void *pdata)
 {
+    cout << "total: " << list_sd_.size() << endl;
     sd_del(fd);
+    cout << "now: " << list_sd_.size() << endl;
 
     server_data sd(fd);
     std::cout << "client close: " << sd.get_id() << std::endl;
@@ -333,20 +338,25 @@ void server::sd_poll()
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         it->poll();
     }
+    pthread_mutex_unlock(&lock_);
 }
 
 void server::sd_reg(const server_data &sd)
 {
+    pthread_mutex_lock(&lock_);
     list_sd_.push_back(sd);
+    pthread_mutex_unlock(&lock_);
 }
 
 void server::sd_config(const string &node_name, session *sess, server_data::sess_type stype)
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(node_name == it->get_node_name() && it->get_sess_type() == server_data::sess_unknow) {
             it->set_session(sess);
@@ -354,51 +364,64 @@ void server::sd_config(const string &node_name, session *sess, server_data::sess
             break;
         }
     }
+    pthread_mutex_unlock(&lock_);
 }
 
 void server::sd_set_pullsess(const string &node_name, session *sess)
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(it->get_node_name() == node_name && it->get_sess_type() == server_data::sess_push) {
             it->set_pull_session(sess);
+            break;
         }
     }
+    pthread_mutex_unlock(&lock_);
 }
 
 void server::sd_del(int fd)
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
+again:
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(fd == it->get_fd()) {
             list_sd_.remove(*it);
+            goto again;
         }
     }
+    pthread_mutex_unlock(&lock_);
 }
 
 void server::sd_del(const string &node_name)
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(node_name == it->get_node_name()) {
             list_sd_.remove(*it);
             break;
         }
     }
+    pthread_mutex_unlock(&lock_);
 }
 
 bool server::sd_exist(const string &node_name)
 {
     list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(node_name == it->get_node_name()) {
+            pthread_mutex_unlock(&lock_);
             return true;
         }
     }
+    pthread_mutex_unlock(&lock_);
 
     return false;
 }
