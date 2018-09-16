@@ -31,12 +31,13 @@ public:
     void set_pull_session(session * sess);
 
     void set_sess_type(server_data::sess_type stype);
-    server_data::sess_type get_sess_type(void);
+    server_data::sess_type get_sess_type(void) const;
 
     string get_id(void) const;
     bool operator ==(const server_data &p) const;
 
     void poll(void);
+    bool has_client(void);
 private:
     char ipstr_[INET_ADDRSTRLEN];
     uint16_t port_;
@@ -48,9 +49,9 @@ private:
     enum sess_type sess_type_;
     string node_name_;
 
-    bool has_client;
-    uint32_t client_ip;
-    uint16_t client_port;
+    bool has_client_;
+    uint32_t client_ip_;
+    uint16_t client_port_;
 };
 
 
@@ -77,11 +78,6 @@ public:
      * delete all session of fd
      */
     void sd_del(int fd);
-
-    /*
-     * delete session of node_name
-     */
-    void sd_del(const string &node_name);
     bool sd_exist(const string &node_name);
 private:
     static void * thread_poll(void * pdata);
