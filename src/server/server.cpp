@@ -14,30 +14,6 @@ using namespace std;
  * server_data
  *
  */
-server_data::server_data(int fd)
-{
-    struct sockaddr_in saddr;
-    socklen_t slen;
-    char buff[24];
-
-    slen = sizeof(struct sockaddr_in);
-    bzero(&saddr, slen);
-    getpeername(fd, (struct sockaddr *)&saddr, &slen);
-    port_ = ntohs(saddr.sin_port);
-    inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr_, INET_ADDRSTRLEN);
-
-    sprintf(buff, "%s:%d", ipstr_, port_);
-    id_ = string(buff);
-
-    fdsock_ = fd;
-    node_name_ = string("unknow");
-    sess_ = NULL;
-    sess_pull_ = NULL;
-    sess_type_ = sess_unknow;
-
-    has_client_ = false;
-}
-
 server_data::server_data(int fd, string node_name)
 {
     struct sockaddr_in saddr;
@@ -54,16 +30,14 @@ server_data::server_data(int fd, string node_name)
         port_ = 0;
     }
 
+    fdsock_ = fd;
     sprintf(buff, "%s:%d", ipstr_, port_);
     id_ = string(buff);
 
-    fdsock_ = fd;
-    node_name_ = node_name;
     sess_ = NULL;
-    sess_pull_ = NULL;
-    sess_type_ = sess_unknow;
+    node_name_ = node_name;
 
-    has_client_ = false;
+    pull_num_= 0;
 }
 
 server_data::~server_data()
@@ -90,24 +64,9 @@ session * server_data::get_session()
     return sess_;
 }
 
-void server_data::set_pull_session(session *sess)
-{
-    sess_pull_ = sess;
-}
-
 void server_data::set_session(session * sess)
 {
     sess_ = sess;
-}
-
-void server_data::set_sess_type(server_data::sess_type stype)
-{
-    sess_type_ = stype;
-}
-
-server_data::sess_type server_data::get_sess_type() const
-{
-    return sess_type_;
 }
 
 string server_data::get_id(void) const
@@ -117,7 +76,7 @@ string server_data::get_id(void) const
 
 bool server_data::operator ==(const server_data &p) const
 {
-    if(id_ == p.get_id() && node_name_ == p.get_node_name() && sess_type_ == p.get_sess_type())
+    if(fdsock_ == p.get_fd() && node_name_ == p.get_node_name())
         return true;
     else
         return false;
@@ -125,87 +84,33 @@ bool server_data::operator ==(const server_data &p) const
 
 void server_data::poll()
 {
-    server_data::sess_type stype = sess_type_;
     session * sess = sess_;
 
-    if(stype == sess_push) {
-        sess->BeginDataAccess();
-        if(sess->GotoFirstSourceWithData()) {
-            do {
-                // get remote client address
-                if(false == has_client_) {
-                    RTPSourceData * dat;
-
-                    // get source ip
-                    dat = sess->GetCurrentSourceInfo();
-                    if (dat->GetRTPDataAddress() != 0) {
-                        const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTPDataAddress());
-                        client_ip_ = addr->GetIP();
-                        client_port_ = addr->GetPort();
-                        has_client_ = true;
-                    }
-                    else if (dat->GetRTCPDataAddress() != 0) {
-                        const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTCPDataAddress());
-                        client_ip_ = addr->GetIP();
-                        client_port_ = addr->GetPort() - 1;
-                        has_client_ = true;
-                    }
-                }
-
-                // read packet
-                RTPPacket * pack;
-                while(NULL != (pack = sess->GetNextPacket())) {
-                    cout << pack->GetSSRC() << ": get data " << pack->GetPacketLength() << " bytes "
-                         << pack->GetSequenceNumber() << endl;
-
-                    if(sess_pull_) {
-                        sess_pull_->SendPacket(pack->GetPayloadData(), pack->GetPayloadLength());
-                        cout << "send to client" << endl;
-                    }
-
-                    sess->DeletePacket(pack);
-                }
-            } while(sess->GotoNextSourceWithData());
-        }
-        sess->EndDataAccess();
-    }
-
-    if(stype == sess_pull) {
-        if(false == has_client_) {
-            sess->BeginDataAccess();
-            if(sess->GotoFirstSourceWithData()) {
-                do {
-                    // get remote client address
-                    RTPSourceData * dat;
-
-                    // get source ip
-                    dat = sess->GetCurrentSourceInfo();
-                    if (dat->GetRTPDataAddress() != 0) {
-                        const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTPDataAddress());
-                        client_ip_ = addr->GetIP();
-                        client_port_ = addr->GetPort();
-                        has_client_ = true;
-                    }
-                    else if (dat->GetRTCPDataAddress() != 0) {
-                        const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTCPDataAddress());
-                        client_ip_ = addr->GetIP();
-                        client_port_ = addr->GetPort() - 1;
-                        has_client_ = true;
-                    }
-
-                    if(has_client_ == true) {
-                        sess->AddDestination(RTPIPv4Address(client_ip_, client_port_));
-                    }
-                } while(sess->GotoNextSourceWithData());
+    sess->BeginDataAccess();
+    if(sess->GotoFirstSourceWithData()) {
+        do {
+            // read packet and send packet if has pull
+            RTPPacket * pack;
+            while(NULL != (pack = sess->GetNextPacket())) {
+                cout << id_ << "-" << node_name_ << " " << pack->GetTimestamp() << endl;
+                if(pull_num_)
+                    sess->SendPacket(pack->GetPayloadData(), pack->GetPayloadLength());
+                sess->DeletePacket(pack);
             }
-            sess->EndDataAccess();
-        }
+        } while(sess->GotoNextSourceWithData());
     }
+    sess->EndDataAccess();
 }
 
-bool server_data::has_client()
+void server_data::pull_inc()
 {
-    return has_client_;
+    pull_num_++;
+}
+
+void server_data::pull_dec()
+{
+    if(pull_num_)
+        pull_num_--;
 }
 
 
@@ -215,44 +120,66 @@ bool server_data::has_client()
  * Server
  *
  */
-server::server()
+server::server(uint16_t port_udp)
     : event_handler()
 {
     Json::CharReaderBuilder builder;
     creader_ = builder.newCharReader();
 
     port_base_ = 5000;
+    loop_exit_ = false;
+    tid_ = 0;
+    tid_udp_ = 0;
+    port_udp_ = port_udp;
 
     pthread_mutex_init(&lock_, NULL);
 }
 
 server::~server()
 {
+    if(0 != tid_) {
+        loop_exit_ = true;
+        pthread_join(tid_, NULL);
+    }
+
+    if(0 != tid_udp_) {
+        pthread_cancel(tid_udp_);
+        pthread_join(tid_udp_, NULL);
+    }
+
     delete creader_;
     pthread_mutex_destroy(&lock_);
 }
 
+// public function
 void server::run()
 {
-    pthread_create(&tid_, NULL, thread_poll, this);
+    if(0 == tid_) {
+        pthread_create(&tid_, NULL, thread_poll, this);
+    }
+
+    if(0 == tid_udp_) {
+        pthread_create(&tid_udp_, NULL, thread_echo, &port_udp_);
+    }
 }
 
 
-
+// privata function
 void server::on_connect(int &fd, void **pdata)
 {
-    server_data sd(fd);
-    std::cout << "client connect: " << sd.get_id() << std::endl;
+    std::cout << "client connect: " << get_id(fd) << std::endl;
 }
 
 void server::on_close(int &fd, void *pdata)
 {
-    cout << "total client number: " << list_sd_.size() << endl;
+    cout << "push client number: " << list_sd_.size() << endl;
+    cout << "pull client number: " << list_pd_.size() << endl;
     sd_del(fd);
-    cout << "now client number: " << list_sd_.size() << endl;
+    sd_del_addr(fd);
+    cout << "now push client number: " << list_sd_.size() << endl;
+    cout << "now pull client number: " << list_pd_.size() << endl;
 
-    server_data sd(fd);
-    std::cout << "client close: " << sd.get_id() << std::endl;
+    std::cout << "client close: " << get_id(fd) << std::endl;
 }
 
 void server::on_read_err(int &fd, void *pdata, int err)
@@ -260,12 +187,14 @@ void server::on_read_err(int &fd, void *pdata, int err)
     errno = err;
     perror("on_read_err");
 
-    cout << "total client number: " << list_sd_.size() << endl;
+    cout << "push client number: " << list_sd_.size() << endl;
+    cout << "pull client number: " << list_pd_.size() << endl;
     sd_del(fd);
-    cout << "now client number: " << list_sd_.size() << endl;
+    sd_del_addr(fd);
+    cout << "now push client number: " << list_sd_.size() << endl;
+    cout << "now pull client number: " << list_pd_.size() << endl;
 
-    server_data sd(fd);
-    std::cout << "client read error: " << sd.get_id() << std::endl;
+    std::cout << "client read error: " << get_id(fd) << std::endl;
 }
 
 void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
@@ -290,7 +219,7 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
                 // register push sess
                 session * sess = session::create(NULL, 0, port_base_);
                 sd_reg(server_data(fd, root["sn"].asString()));
-                sd_config(root["sn"].asString(), sess, server_data::sess_push);
+                sd_set_sess(root["sn"].asString(), sess);
 
                 root.clear();
                 root["port"] = port_base_;
@@ -307,27 +236,17 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             }
         } else if(cmd == string("pull")) {
             if(sd_exist(root["sn"].asString()) == true) {
-                session * sess = session::create(NULL, 0, port_base_);
-                sd_reg(server_data(fd, root["sn"].asString()));
-                sd_config(root["sn"].asString(), sess, server_data::sess_pull);
-                sd_set_pullsess(root["sn"].asString(), sess);
-
+                sd_add_addr(fd, root["sn"].asString(), root["ip"].asUInt(), root["port"].asUInt());
                 root.clear();
-                root["port"] = port_base_;
-                rsp = root.toStyledString();
-                write(fd, rsp.c_str(), rsp.size());
-
-                port_base_ += 2;
+                root["msg"] = "pull ok";
             } else {
                 root.clear();
-                root["port"] = 0;
                 root["msg"] = "can't find node name/sn";
-                rsp = root.toStyledString();
-                write(fd, rsp.c_str(), rsp.size());
             }
+            rsp = root.toStyledString();
+            write(fd, rsp.c_str(), rsp.size());
         } else if(cmd == string("list")) {
             // return
-
         } else {
             root.clear();
             root["cmp"] = "unsuppot";
@@ -341,26 +260,17 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
     }
 }
 
-void server::sd_poll()
+bool server::sd_poll(void)
 {
     list<server_data>::iterator it;
-    list<server_data>::iterator it_sub;
 
     pthread_mutex_lock(&lock_);
-
-    // push node: get video
-    // pull node: get remote addres
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         it->poll();
     }
-
-    // connect pull and push node
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(it->get_sess_type() == server_data::sess_pull && it->has_client()) {
-
-        }
-    }
     pthread_mutex_unlock(&lock_);
+
+    return loop_exit_;
 }
 
 void server::sd_reg(const server_data &sd)
@@ -370,29 +280,14 @@ void server::sd_reg(const server_data &sd)
     pthread_mutex_unlock(&lock_);
 }
 
-void server::sd_config(const string &node_name, session *sess, server_data::sess_type stype)
+void server::sd_set_sess(const string &node_name, session *sess)
 {
     list<server_data>::iterator it;
 
     pthread_mutex_lock(&lock_);
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(node_name == it->get_node_name() && it->get_sess_type() == server_data::sess_unknow) {
+        if(node_name == it->get_node_name()) {
             it->set_session(sess);
-            it->set_sess_type(stype);
-            break;
-        }
-    }
-    pthread_mutex_unlock(&lock_);
-}
-
-void server::sd_set_pullsess(const string &node_name, session *sess)
-{
-    list<server_data>::iterator it;
-
-    pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(it->get_node_name() == node_name && it->get_sess_type() == server_data::sess_push) {
-            it->set_pull_session(sess);
             break;
         }
     }
@@ -407,6 +302,21 @@ void server::sd_del(int fd)
 again:
     for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
         if(fd == it->get_fd()) {
+            list_sd_.remove(*it);
+            goto again;
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+}
+
+void server::sd_del(int fd, const string &node_name)
+{
+    list<server_data>::iterator it;
+
+    pthread_mutex_lock(&lock_);
+again:
+    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
+        if(fd == it->get_fd() && node_name == it->get_node_name()) {
             list_sd_.remove(*it);
             goto again;
         }
@@ -430,19 +340,148 @@ bool server::sd_exist(const string &node_name)
     return false;
 }
 
+void server::sd_add_addr(int fd, const string &node_name, uint32_t ip, uint32_t port)
+{
+    list<server_data>::iterator it;
 
+    pthread_mutex_lock(&lock_);
+    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
+        if(node_name == it->get_node_name()) {
+            session * sess = it->get_session();
+            sess->AddDestination(RTPIPv4Address(ip, port));
+            it->pull_inc();
+        }
+    }
 
+    list_pd_.push_back(pull_data(fd, node_name, ip, (uint16_t)port));
+    pthread_mutex_unlock(&lock_);
+}
 
-// privata function
+void server::sd_del_addr(int fd)
+{
+    list<pull_data>::iterator it;
+    list<server_data>::iterator it_sub;
+
+    pthread_mutex_lock(&lock_);
+
+again:
+    for(it = list_pd_.begin(); it != list_pd_.end(); it++) {
+        if(fd == it->fdsock_) {
+            for(it_sub = list_sd_.begin(); it_sub != list_sd_.end(); it_sub++) {
+                if(it->node_name_ == it_sub->get_node_name()) {
+                    session * sess = it_sub->get_session();
+                    sess->DeleteDestination(RTPIPv4Address(it->ip_, it->port_));
+                    it_sub->pull_dec();
+                }
+            }
+
+            list_pd_.remove(*it);
+            goto again;
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+}
+
 void * server::thread_poll(void *pdata)
 {
     server * s = (server *)pdata;
-    while(1) {
-        s->sd_poll();
+    bool exit = false;
+    while(!exit) {
+        exit = s->sd_poll();
 
         // wait 10ms
         RTPTime::Wait(RTPTime(0, 10 * 1000));
     }
+}
+
+void * server::thread_echo(void *pdata)
+{
+    uint32_t cli_ip;
+    uint16_t cli_port;
+    char ipstr[INET_ADDRSTRLEN];
+    char buff[28];
+    Json::Value root;
+    bool need_send = false;
+
+    session * sess = session::create(NULL, 0, *((uint16_t *)pdata), false);
+    while(1) {
+        sess->BeginDataAccess();
+        if(sess->GotoFirstSourceWithData()) {
+            do {
+                // read packet
+                RTPPacket * pack;
+                while(NULL != (pack = sess->GetNextPacket())) {
+                    string rsp((char *)(pack->GetPayloadData()), pack->GetPayloadLength());
+                    if(rsp == string("ping")) {
+                        // get remote client address
+                        RTPSourceData * dat;
+
+                        // get source ip
+                        dat = sess->GetCurrentSourceInfo();
+                        if (dat->GetRTPDataAddress() != 0) {
+                            const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTPDataAddress());
+                            cli_ip = addr->GetIP();
+                            cli_port = addr->GetPort();
+                        }
+                        else if (dat->GetRTCPDataAddress() != 0) {
+                            const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTCPDataAddress());
+                            cli_ip = addr->GetIP();
+                            cli_port = addr->GetPort() - 1;
+                        } else {
+                            cli_ip = 0;
+                            cli_port = 0;
+                        }
+
+                        if(cli_ip != 0 && cli_port != 0) {
+                            sess->AddDestination(RTPIPv4Address(cli_ip, cli_port));
+                            root["ip"] = cli_ip;
+                            root["port"] = cli_port;
+
+                            cli_ip = htonl(cli_ip);
+                            inet_ntop(AF_INET, &cli_ip, ipstr, INET_ADDRSTRLEN);
+                            sprintf(buff, "%s:%d", ipstr, cli_port);
+                            root["addr"] = string(buff);
+                            need_send = true;
+
+                            cout << rsp << endl;
+                        }
+                    }
+                    sess->DeletePacket(pack);
+                }
+            } while(sess->GotoNextSourceWithData());
+        }
+        sess->EndDataAccess();
+
+        if(need_send) {
+            string rsp = root.toStyledString();
+            sess->SendPacket(rsp.c_str(), rsp.size());
+            sess->Poll();
+            sess->ClearDestinations();
+            need_send = false;
+        }
+
+        // wait 10ms
+        sess->Poll();
+        RTPTime::Wait(RTPTime(0, 10 * 1000));
+    }
+
+    sess->BYEDestroy(RTPTime(10, 0), 0, 0);
+    pthread_exit((void *)0);
+}
+
+string server::get_id(int fd)
+{
+    struct sockaddr_in saddr;
+    socklen_t slen;
+    char str[24], ipstr[INET_ADDRSTRLEN];
+
+    slen = sizeof(struct sockaddr_in);
+    bzero(&saddr, slen);
+    getpeername(fd, (struct sockaddr *)&saddr, &slen);
+    inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr, INET_ADDRSTRLEN);
+
+    sprintf(str, "%s:%d", ipstr, ntohs(saddr.sin_port));
+    return string(str);
 }
 
 

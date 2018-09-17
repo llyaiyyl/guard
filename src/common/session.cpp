@@ -3,7 +3,7 @@
 
 #include "session.h"
 
-session::session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port)
+session::session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port, bool usepoll)
     : RTPSession()
 {
     int32_t ret;
@@ -14,7 +14,7 @@ session::session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port)
     sessparams.SetOwnTimestampUnit(1.0 / 9000.0);
     sessparams.SetMaximumPacketSize(1500);
     sessparams.SetAcceptOwnPackets(false);
-    sessparams.SetUsePollThread(true);
+    sessparams.SetUsePollThread(usepoll);
 
     transparams.SetBindIP(0);
     transparams.SetPortbase(src_port);
@@ -39,15 +39,15 @@ session::~session()
 }
 
 
-session * session::create(const char *ipstr, uint16_t dst_port, uint16_t src_port)
+session * session::create(const char *ipstr, uint16_t dst_port, uint16_t src_port, bool usepoll)
 {
     uint32_t dst_ip;
 
     if(ipstr) {
         inet_pton(AF_INET, ipstr, &dst_ip);
-        return new session(ntohl(dst_ip), dst_port, src_port);
+        return new session(ntohl(dst_ip), dst_port, src_port, usepoll);
     } else {
-        return new session(0, 0, src_port);
+        return new session(0, 0, src_port, usepoll);
     }
 }
 

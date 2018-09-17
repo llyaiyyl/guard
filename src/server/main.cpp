@@ -10,7 +10,7 @@ int main(int argc, char * argv[])
 {
     int32_t fdsock;
     reactor * r;
-    server ser;
+    server ser(4000);
 
     fdsock = tcp::Listen(4000);
     ser.run();

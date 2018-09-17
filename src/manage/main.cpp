@@ -19,6 +19,12 @@ int main(int argc, char * argv[])
     Json::CharReaderBuilder builder;
     Json::CharReader * creader = builder.newCharReader();
 
+    int32_t fdudp;
+    struct sockaddr_in saddr;
+    socklen_t slen;
+    int rn;
+    char rbuff[1024];
+
     char * sn_str, * ip_str, * port_str;
 
 
@@ -50,49 +56,32 @@ int main(int argc, char * argv[])
     if(string("pong") == root["cmd"].asString()) {
         cout << "connect server ok." << endl;
 
-        // require a port from server
-        root.clear();
-        root["cmd"] = "pull";
-        root["sn"] = sn_str;
-        tcp::Write(fdsock, root.toStyledString());
-        rsp = tcp::Read(fdsock, 1024);
-        creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
-        dst_port = root["port"].asUInt();
-        if(dst_port) {
-            // download stream
-            cout << root.toStyledString();
-            session * sess = session::create(ip_str, (uint16_t)dst_port, (uint16_t)(dst_port + 2000));
-            bool isframe = false;
-            while(1) {
-                if(isframe == false)
-                    sess->SendPacket("ping", 4);
+        session * sess = session::create(ip_str, (uint16_t)port, (uint16_t)(port + 20));
+        while(1) {
+            cout << "send" << endl;
+            sess->SendPacket("ping", 4);
 
-                sess->BeginDataAccess();
-                if(sess->GotoFirstSourceWithData()) {
-                    do {
-                        // read packet
-                        RTPPacket * pack;
-                        while(NULL != (pack = sess->GetNextPacket())) {
-                            cout << pack->GetSSRC() << ": get data " << pack->GetPacketLength() << " bytes "
-                                 << pack->GetSequenceNumber() << endl;
-                            sess->DeletePacket(pack);
-
-                            isframe = true;
-                        }
-                    } while(sess->GotoNextSourceWithData());
-                }
-                sess->EndDataAccess();
-
-                RTPTime::Wait(RTPTime(0, 10 * 1000));
+            sess->BeginDataAccess();
+            if(sess->GotoFirstSourceWithData()) {
+                do {
+                    // read packet
+                    RTPPacket * pack;
+                    while(NULL != (pack = sess->GetNextPacket())) {
+                        creader->parse((char *)(pack->GetPayloadData()), (char *)(pack->GetPayloadData()) + pack->GetPayloadLength(), &root, NULL);
+                        cout << root.toStyledString() << endl;
+                        sess->DeletePacket(pack);
+                    }
+                } while(sess->GotoNextSourceWithData());
             }
-        } else {
-            cout << "error: " << root["msg"].asString()<< endl;
-            return 1;
+            sess->EndDataAccess();
+
+            RTPTime::Wait(RTPTime(0, 500 * 1000));
         }
     } else {
         cout << "connect server fail." << endl;
     }
 
+    close(fdsock);
     return 0;
 }
 

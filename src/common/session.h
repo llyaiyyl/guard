@@ -15,13 +15,13 @@ using namespace jrtplib;
 class session : public RTPSession
 {
 public:
-    static session * create(const char * ipstr, uint16_t dst_port, uint16_t src_port);
+    static session * create(const char * ipstr, uint16_t dst_port, uint16_t src_port, bool usepoll = true);
     ~session();
 
     static void log_error(int ret);
 
 private:
-    session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port);
+    session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port, bool usepoll);
 };
 
 #endif // SESSION_H
