@@ -85,21 +85,30 @@ bool server_data::operator ==(const server_data &p) const
 void server_data::poll()
 {
     session * sess = sess_;
+    RTPPacket * pack;
+
+    list<packet_data> list_pk_;
+    list<packet_data>::iterator it;
 
     sess->BeginDataAccess();
     if(sess->GotoFirstSourceWithData()) {
         do {
-            // read packet and send packet if has pull
-            RTPPacket * pack;
             while(NULL != (pack = sess->GetNextPacket())) {
-                cout << id_ << "-" << node_name_ << " " << pack->GetTimestamp() << endl;
-                if(pull_num_)
-                    sess->SendPacket(pack->GetPayloadData(), pack->GetPayloadLength());
-                sess->DeletePacket(pack);
+                // cout << id_ << "-" << node_name_ << " " << pack->GetSequenceNumber() << endl;
+                list_pk_.push_back(packet_data(pack));
             }
         } while(sess->GotoNextSourceWithData());
     }
     sess->EndDataAccess();
+
+    if(pull_num_) {
+        for(it = list_pk_.begin(); it != list_pk_.end(); it++) {
+            pack = it->pack_;
+            sess->SendPacket(pack->GetPayloadData(), pack->GetPayloadLength());
+            sess->DeletePacket(it->pack_);
+        }
+        list_pk_.clear();
+    }
 }
 
 void server_data::pull_inc()
@@ -227,6 +236,8 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
                 write(fd, rsp.c_str(), rsp.size());
 
                 port_base_ += 2;
+
+                cout << "push client number: " << list_sd_.size() << endl;
             } else {
                 root.clear();
                 root["port"] = 0;
@@ -238,9 +249,13 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             if(sd_exist(root["sn"].asString()) == true) {
                 sd_add_addr(fd, root["sn"].asString(), root["ip"].asUInt(), root["port"].asUInt());
                 root.clear();
+                root["status"] = 0;
                 root["msg"] = "pull ok";
+
+                cout << "pull client number: " << list_pd_.size() << endl;
             } else {
                 root.clear();
+                root["status"] = 1;
                 root["msg"] = "can't find node name/sn";
             }
             rsp = root.toStyledString();
@@ -363,7 +378,6 @@ void server::sd_del_addr(int fd)
     list<server_data>::iterator it_sub;
 
     pthread_mutex_lock(&lock_);
-
 again:
     for(it = list_pd_.begin(); it != list_pd_.end(); it++) {
         if(fd == it->fdsock_) {
@@ -396,77 +410,39 @@ void * server::thread_poll(void *pdata)
 
 void * server::thread_echo(void *pdata)
 {
-    uint32_t cli_ip;
-    uint16_t cli_port;
-    char ipstr[INET_ADDRSTRLEN];
-    char buff[28];
+    int fd;
+    struct sockaddr_in saddr;
+    socklen_t slen;
+    ssize_t rn;
+    string rsp;
+    char rbuff[1024], ipstr[INET_ADDRSTRLEN];
     Json::Value root;
-    bool need_send = false;
 
-    session * sess = session::create(NULL, 0, *((uint16_t *)pdata), false);
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    bzero(&saddr, sizeof(struct sockaddr_in));
+    saddr.sin_family = AF_INET;
+    saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    saddr.sin_port = htons(*((uint16_t *)pdata));
+
+    bind(fd, (struct sockaddr *)&saddr, sizeof(struct sockaddr_in));
     while(1) {
-        sess->BeginDataAccess();
-        if(sess->GotoFirstSourceWithData()) {
-            do {
-                // read packet
-                RTPPacket * pack;
-                while(NULL != (pack = sess->GetNextPacket())) {
-                    string rsp((char *)(pack->GetPayloadData()), pack->GetPayloadLength());
-                    if(rsp == string("ping")) {
-                        // get remote client address
-                        RTPSourceData * dat;
+        slen = sizeof(struct sockaddr_in);
+        bzero(&saddr, slen);
+        rn = recvfrom(fd, rbuff, 1024, 0, (struct sockaddr *)&saddr, &slen);
+        rsp = string(rbuff, rn);
+        if(rsp == string("ping")) {
+            root["ip"] = ntohl(saddr.sin_addr.s_addr);
+            root["port"] = ntohs(saddr.sin_port);
 
-                        // get source ip
-                        dat = sess->GetCurrentSourceInfo();
-                        if (dat->GetRTPDataAddress() != 0) {
-                            const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTPDataAddress());
-                            cli_ip = addr->GetIP();
-                            cli_port = addr->GetPort();
-                        }
-                        else if (dat->GetRTCPDataAddress() != 0) {
-                            const RTPIPv4Address *addr = (const RTPIPv4Address *)(dat->GetRTCPDataAddress());
-                            cli_ip = addr->GetIP();
-                            cli_port = addr->GetPort() - 1;
-                        } else {
-                            cli_ip = 0;
-                            cli_port = 0;
-                        }
+            inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr, INET_ADDRSTRLEN);
+            sprintf(rbuff, "%s:%d", ipstr, ntohs(saddr.sin_port));
+            root["addr"] = string(rbuff);
+            rsp = root.toStyledString();
 
-                        if(cli_ip != 0 && cli_port != 0) {
-                            sess->AddDestination(RTPIPv4Address(cli_ip, cli_port));
-                            root["ip"] = cli_ip;
-                            root["port"] = cli_port;
-
-                            cli_ip = htonl(cli_ip);
-                            inet_ntop(AF_INET, &cli_ip, ipstr, INET_ADDRSTRLEN);
-                            sprintf(buff, "%s:%d", ipstr, cli_port);
-                            root["addr"] = string(buff);
-                            need_send = true;
-
-                            cout << rsp << endl;
-                        }
-                    }
-                    sess->DeletePacket(pack);
-                }
-            } while(sess->GotoNextSourceWithData());
+            sendto(fd, rsp.c_str(), rsp.size(), 0, (struct sockaddr *)&saddr, slen);
         }
-        sess->EndDataAccess();
-
-        if(need_send) {
-            string rsp = root.toStyledString();
-            sess->SendPacket(rsp.c_str(), rsp.size());
-            sess->Poll();
-            sess->ClearDestinations();
-            need_send = false;
-        }
-
-        // wait 10ms
-        sess->Poll();
-        RTPTime::Wait(RTPTime(0, 10 * 1000));
     }
-
-    sess->BYEDestroy(RTPTime(10, 0), 0, 0);
-    pthread_exit((void *)0);
 }
 
 string server::get_id(int fd)

@@ -20,6 +20,7 @@ int main(int argc, char * argv[])
     Json::CharReader * creader = builder.newCharReader();
 
     int32_t fdudp;
+    uint16_t port_udp;
     struct sockaddr_in saddr;
     socklen_t slen;
     int rn;
@@ -56,26 +57,57 @@ int main(int argc, char * argv[])
     if(string("pong") == root["cmd"].asString()) {
         cout << "connect server ok." << endl;
 
-        session * sess = session::create(ip_str, (uint16_t)port, (uint16_t)(port + 20));
-        while(1) {
-            cout << "send" << endl;
-            sess->SendPacket("ping", 4);
+        // get local output address
+again:
+        fdudp = socket(AF_INET, SOCK_DGRAM, 0);
 
-            sess->BeginDataAccess();
-            if(sess->GotoFirstSourceWithData()) {
-                do {
-                    // read packet
-                    RTPPacket * pack;
-                    while(NULL != (pack = sess->GetNextPacket())) {
-                        creader->parse((char *)(pack->GetPayloadData()), (char *)(pack->GetPayloadData()) + pack->GetPayloadLength(), &root, NULL);
-                        cout << root.toStyledString() << endl;
-                        sess->DeletePacket(pack);
-                    }
-                } while(sess->GotoNextSourceWithData());
+        bzero(&saddr, sizeof(struct sockaddr_in));
+        saddr.sin_family = AF_INET;
+        inet_pton(AF_INET, ip_str, &(saddr.sin_addr.s_addr));
+        saddr.sin_port = htons(port);
+
+        sendto(fdudp, "ping", 4, 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr_in));
+        rn = recvfrom(fdudp, rbuff, 1024, 0, NULL, NULL);
+        rsp = string(rbuff, rn);
+        creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
+        cout << root.toStyledString() << endl;
+
+        slen = sizeof(struct sockaddr_in);
+        bzero(&saddr, sizeof(struct sockaddr_in));
+        getsockname(fdudp, (struct sockaddr *)&saddr, &slen);
+        port_udp = ntohs(saddr.sin_port);
+
+        close(fdudp);
+        if((port_udp % 2) != 0)
+            goto again;
+
+        //
+        root["cmd"] = "pull";
+        root["sn"] = string(sn_str);
+        tcp::Write(fdsock, root.toStyledString());
+        rsp = tcp::Read(fdsock, 1024);
+        creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
+        cout << root.toStyledString() << endl;
+
+        if(root["status"].asUInt() == 0) {
+            session * sess = session::create(NULL, 0, port_udp);
+            while(1) {
+                sess->BeginDataAccess();
+                if(sess->GotoFirstSourceWithData()) {
+                    do {
+                        RTPPacket * pack;
+                        while(NULL != (pack = sess->GetNextPacket())) {
+                            rsp = string((char *)(pack->GetPayloadData()), pack->GetPayloadLength());
+                            cout << pack->GetSequenceNumber() << ": " << rsp << endl;
+                            sess->DeletePacket(pack);
+                        }
+                    } while(sess->GotoNextSourceWithData());
+                }
+                sess->EndDataAccess();
+                RTPTime::Wait(RTPTime(0, 10 * 1000));
             }
-            sess->EndDataAccess();
-
-            RTPTime::Wait(RTPTime(0, 500 * 1000));
+        } else {
+            cout << root["msg"].asString() << endl;
         }
     } else {
         cout << "connect server fail." << endl;

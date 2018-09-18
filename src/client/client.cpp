@@ -53,17 +53,15 @@ const char *client::get_name()
 
 void * client::thread_poll(void *pdata)
 {
-    char msg[] = "Don't think you are, Know you are";
     client * ptr = (client *)pdata;
     session * sess = ptr->sess_;
-    uint32_t num;
-    int ret;
+    uint32_t num = 0;
+    char sbuff[1024];
 
     while(ptr->loop_exit_ == false) {
-        // send video frame
-        ret = sess->SendPacket(msg, strlen(msg));
-        sess->log_error(ret);
-        cout << "client " << sess->GetLocalSSRC() << ": sending " << ++num << " packet" << endl;
+        sprintf(sbuff, "%d: Don't think you are, Know you are", ++num);
+        sess->SendPacket(sbuff, strlen(sbuff));
+        cout << "client " << sess->GetLocalSSRC() << ": " << sbuff << endl;
 
         RTPTime::Wait(RTPTime(0, 50 * 1000));
     }

@@ -57,13 +57,24 @@ public:
         if(fdsock_ == p.fdsock_ && node_name_ == p.node_name_)
             return true;
         else
-            return true;
+            return false;
     }
 
     int fdsock_;
     string node_name_;
     uint32_t ip_;
     uint16_t port_;
+};
+
+class packet_data
+{
+public:
+    packet_data(RTPPacket *pack)
+    {
+        pack_ = pack;
+    }
+
+    RTPPacket * pack_;
 };
 
 
