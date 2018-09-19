@@ -14,7 +14,7 @@ using namespace std;
  * server_data
  *
  */
-server_data::server_data(int fd, string node_name)
+server_data::server_data(int fd, string node_name, uint16_t port_push)
 {
     struct sockaddr_in saddr;
     socklen_t slen;
@@ -26,8 +26,8 @@ server_data::server_data(int fd, string node_name)
         port_ = ntohs(saddr.sin_port);
         inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr_, INET_ADDRSTRLEN);
     } else {
-        ipstr_[0] = 0;
         port_ = 0;
+        ipstr_[0] = 0;
     }
 
     fdsock_ = fd;
@@ -38,6 +38,8 @@ server_data::server_data(int fd, string node_name)
     node_name_ = node_name;
 
     pull_num_= 0;
+
+    port_push_ = port_push;
 }
 
 server_data::~server_data()
@@ -87,27 +89,26 @@ void server_data::poll()
     session * sess = sess_;
     RTPPacket * pack;
 
-    list<packet_data> list_pk_;
-    list<packet_data>::iterator it;
+    list<RTPPacket *> list_ppk_;
+    list<RTPPacket *>::iterator it;
 
     sess->BeginDataAccess();
     if(sess->GotoFirstSourceWithData()) {
         do {
             while(NULL != (pack = sess->GetNextPacket())) {
                 // cout << id_ << "-" << node_name_ << " " << pack->GetSequenceNumber() << endl;
-                list_pk_.push_back(packet_data(pack));
+                list_ppk_.push_back(pack);
             }
         } while(sess->GotoNextSourceWithData());
     }
     sess->EndDataAccess();
 
     if(pull_num_) {
-        for(it = list_pk_.begin(); it != list_pk_.end(); it++) {
-            pack = it->pack_;
-            sess->SendPacket(pack->GetPayloadData(), pack->GetPayloadLength());
-            sess->DeletePacket(it->pack_);
+        for(it = list_ppk_.begin(); it != list_ppk_.end(); it++) {
+            sess->SendPacket((*it)->GetPayloadData(), (*it)->GetPayloadLength());
+            sess->DeletePacket(*it);
         }
-        list_pk_.clear();
+        list_ppk_.clear();
     }
 }
 
@@ -120,6 +121,11 @@ void server_data::pull_dec()
 {
     if(pull_num_)
         pull_num_--;
+}
+
+void server_data::get_port_push(uint16_t *port)
+{
+    *port = port_push_;
 }
 
 
@@ -227,7 +233,7 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             if(sd_exist(root["sn"].asString()) == false) {
                 // register push sess
                 session * sess = session::create(NULL, 0, port_base_);
-                sd_reg(server_data(fd, root["sn"].asString()));
+                sd_reg(server_data(fd, root["sn"].asString(), port_base_));
                 sd_set_sess(root["sn"].asString(), sess);
 
                 root.clear();
@@ -247,10 +253,15 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             }
         } else if(cmd == string("pull")) {
             if(sd_exist(root["sn"].asString()) == true) {
-                sd_add_addr(fd, root["sn"].asString(), root["ip"].asUInt(), root["port"].asUInt());
+                uint16_t port;
+
+                sd_add_addr(fd, root["sn"].asString(), root["ip"].asUInt(), uint16_t(root["port"].asUInt()));
+                sd_get_port(fd, root["sn"].asString(), &port);
+
                 root.clear();
                 root["status"] = 0;
                 root["msg"] = "pull ok";
+                root["port"] = port;
 
                 cout << "pull client number: " << list_pd_.size() << endl;
             } else {
@@ -355,7 +366,7 @@ bool server::sd_exist(const string &node_name)
     return false;
 }
 
-void server::sd_add_addr(int fd, const string &node_name, uint32_t ip, uint32_t port)
+void server::sd_add_addr(int fd, const string &node_name, uint32_t ip, uint16_t port)
 {
     list<server_data>::iterator it;
 
@@ -365,6 +376,7 @@ void server::sd_add_addr(int fd, const string &node_name, uint32_t ip, uint32_t 
             session * sess = it->get_session();
             sess->AddDestination(RTPIPv4Address(ip, port));
             it->pull_inc();
+            cout << "add: " << ip << "-" << port << endl;
         }
     }
 
@@ -391,6 +403,20 @@ again:
 
             list_pd_.remove(*it);
             goto again;
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+}
+
+void server::sd_get_port(int fd, const string &node_name, uint16_t *port)
+{
+    list<server_data>::iterator it;
+
+    pthread_mutex_lock(&lock_);
+    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
+        if(node_name == it->get_node_name()) {
+            it->get_port_push(port);
+            break;
         }
     }
     pthread_mutex_unlock(&lock_);
@@ -440,6 +466,7 @@ void * server::thread_echo(void *pdata)
             root["addr"] = string(rbuff);
             rsp = root.toStyledString();
 
+            cout << rsp << endl;
             sendto(fd, rsp.c_str(), rsp.size(), 0, (struct sockaddr *)&saddr, slen);
         }
     }

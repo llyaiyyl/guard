@@ -14,7 +14,6 @@ int main(int argc, char * argv[])
     int32_t fdsock;
     uint16_t port;
     string rsp;
-    uint32_t dst_port;
     Json::Value root;
     Json::CharReaderBuilder builder;
     Json::CharReader * creader = builder.newCharReader();
@@ -78,8 +77,9 @@ again:
         port_udp = ntohs(saddr.sin_port);
 
         close(fdudp);
-        if((port_udp % 2) != 0)
+        if((port_udp % 2) != 0) {
             goto again;
+        }
 
         //
         root["cmd"] = "pull";
@@ -90,8 +90,14 @@ again:
         cout << root.toStyledString() << endl;
 
         if(root["status"].asUInt() == 0) {
-            session * sess = session::create(NULL, 0, port_udp);
+            uint16_t port_test = root["port"].asUInt();
+            session * sess = session::create(ip_str, port_test, port_udp);
+            bool has_recv = false;
             while(1) {
+                if(false == has_recv) {
+                    sess->SendRawData("ping", 4, true);
+                }
+
                 sess->BeginDataAccess();
                 if(sess->GotoFirstSourceWithData()) {
                     do {
@@ -100,6 +106,8 @@ again:
                             rsp = string((char *)(pack->GetPayloadData()), pack->GetPayloadLength());
                             cout << pack->GetSequenceNumber() << ": " << rsp << endl;
                             sess->DeletePacket(pack);
+                            has_recv = true;
+                            sess->ClearDestinations();
                         }
                     } while(sess->GotoNextSourceWithData());
                 }

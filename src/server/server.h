@@ -14,7 +14,7 @@ using namespace std;
 class server_data
 {
 public:
-    server_data(int fd, string node_name);
+    server_data(int fd, string node_name, uint16_t port_push);
     ~server_data();
 
     int get_fd(void) const;
@@ -29,9 +29,12 @@ public:
 
     void pull_inc(void);
     void pull_dec(void);
+
+    void get_port_push(uint16_t * port);
 private:
     char ipstr_[INET_ADDRSTRLEN];
     uint16_t port_;
+    uint16_t port_push_;
     int fdsock_;
     string id_;                  // ip:port
 
@@ -66,18 +69,6 @@ public:
     uint16_t port_;
 };
 
-class packet_data
-{
-public:
-    packet_data(RTPPacket *pack)
-    {
-        pack_ = pack;
-    }
-
-    RTPPacket * pack_;
-};
-
-
 class server : public event_handler
 {
 public:
@@ -99,8 +90,9 @@ private:
     void sd_del(int fd, const string &node_name);
     bool sd_exist(const string &node_name);
 
-    void sd_add_addr(int fd, const string &node_name, uint32_t ip, uint32_t port);
+    void sd_add_addr(int fd, const string &node_name, uint32_t ip, uint16_t port);
     void sd_del_addr(int fd);
+    void sd_get_port(int fd, const string &node_name, uint16_t * port);
 
     static void * thread_poll(void * pdata);
     static void * thread_echo(void * pdata);
