@@ -103,9 +103,11 @@ again:
                     do {
                         RTPPacket * pack;
                         while(NULL != (pack = sess->GetNextPacket())) {
-                            rsp = string((char *)(pack->GetPayloadData()), pack->GetPayloadLength());
-                            cout << pack->GetSequenceNumber() << ": " << rsp << endl;
+                            cout << pack->GetTimestamp()
+                                 << " " << pack->GetExtensionID()
+                                 << " " << pack->GetPayloadLength() << endl;
                             sess->DeletePacket(pack);
+
                             has_recv = true;
                             sess->ClearDestinations();
                         }

@@ -96,7 +96,9 @@ void server_data::poll()
     if(sess->GotoFirstSourceWithData()) {
         do {
             while(NULL != (pack = sess->GetNextPacket())) {
-                // cout << id_ << "-" << node_name_ << " " << pack->GetSequenceNumber() << endl;
+                cout << id_ << "-" << node_name_ << " " << pack->GetTimestamp()
+                     << " " << pack->GetExtensionID()
+                     << " " << pack->GetPayloadLength() << endl;
                 list_ppk_.push_back(pack);
             }
         } while(sess->GotoNextSourceWithData());
@@ -105,7 +107,11 @@ void server_data::poll()
 
     if(pull_num_) {
         for(it = list_ppk_.begin(); it != list_ppk_.end(); it++) {
-            sess->SendPacket((*it)->GetPayloadData(), (*it)->GetPayloadLength());
+            if((*it)->GetExtensionID() == 1) {
+                sess->SendPacketEx((*it)->GetPayloadData(), (*it)->GetPayloadLength(), 96, false, 10, (*it)->GetExtensionID(), NULL, 0);
+            } else {
+                sess->SendPacketEx((*it)->GetPayloadData(), (*it)->GetPayloadLength(), 96, false, 0, (*it)->GetExtensionID(), NULL, 0);
+            }
             sess->DeletePacket(*it);
         }
         list_ppk_.clear();

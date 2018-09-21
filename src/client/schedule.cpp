@@ -17,23 +17,23 @@ schedule::~schedule()
 
 }
 
-void schedule::reg(const client &c)
+void schedule::reg(client * p)
 {
-    list_client_.push_back(c);
+    list_client_.push_back(p);
 }
 
 void schedule::run()
 {
     ssize_t n;
     char rbuff[1024];
-    list<client>::iterator it;
+    list<client *>::iterator it;
     Json::Value root;
     Json::CharReaderBuilder builder;
     Json::CharReader * creader = builder.newCharReader();
 
     // start all client
     for(it = list_client_.begin(); it != list_client_.end(); it++) {
-        it->run();
+        (*it)->run();
     }
 
     cout << "schedule runing..." << endl;
@@ -48,8 +48,8 @@ void schedule::run()
 
             // close all client
             for(it = list_client_.begin(); it != list_client_.end(); it++) {
-                it->quit();
-                cout << it->get_name() << " quit" << endl;
+                cout << (*it)->get_name() << " quit" << endl;
+                delete (*it);
             }
             list_client_.clear();
 

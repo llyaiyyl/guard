@@ -14,8 +14,9 @@ public:
     ~client();
 
     void run(void);
-    void quit(void);
-    const char * get_name();
+    const char * get_name(void);
+
+    void send_packet(const void * data, size_t len);
 private:
     static void * thread_poll(void * pdata);
 
@@ -24,6 +25,7 @@ private:
     pthread_t tid_;
     bool loop_exit_;
     string name_;
+    size_t max_;
 };
 
 #endif // SENDER_H

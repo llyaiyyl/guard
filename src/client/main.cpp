@@ -65,7 +65,7 @@ again:
             if(dst_port) {
                 // upstream
                 session * sess = session::create(ip_str, (uint16_t)dst_port, (uint16_t)(dst_port + 1000));
-                sch.reg(client(string(sn_str), sess));
+                sch.reg(new client(string(sn_str), sess));
 
                 cout << "register client: " << sn_str << endl;
             } else {
