@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+
 #include <stdint.h>
 #include <stdio.h>
 #include "tcp.h"
@@ -11,32 +13,36 @@ using namespace std;
 int main(int argc, char * argv[])
 {
     int32_t fdsock;
-    uint16_t port;
     string rsp;
     uint32_t dst_port;
-    Json::Value root;
+    Json::Value root, config;
     Json::CharReaderBuilder builder;
     Json::CharReader * creader = builder.newCharReader();
 
-    char * sn_str, * ip_str, * port_str;
-
-
-    // load arg
-    if(argc != 4) {
-        cout << "Usage: guard-client <sn> <ip> <port>" << endl;
+    // load argument
+    if(argc != 2) {
+        cout << "Usage: guard-client configfile" << endl;
         return -1;
     }
-    sn_str = argv[1];
-    ip_str = argv[2];
-    port_str = argv[3];
 
-    sscanf(port_str, "%d", &fdsock);
-    port = fdsock;
-    cout << "Connect to " << ip_str << ":" << port << endl;
+    fstream inf;
+    string line;
+    inf.open(argv[1]);
+    if(!inf.is_open()) {
+        cout << "can't open file" << endl;
+        return 1;
+    }
 
-again:
+    rsp.clear();
+    while(getline(inf, line))
+        rsp += line;
+    inf.close();
+
+    creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &config, NULL);
+    cout << config.toStyledString() << endl;
+
     // connect to server
-    fdsock = tcp::Connect(ip_str, port);
+    fdsock = tcp::Connect(config["ip"].asCString(), (uint16_t)(config["port"].asUInt()));
     if(-1 == fdsock) {
         cout << "Can't not connect to server." << endl;
         return -1;
@@ -48,10 +54,36 @@ again:
     rsp = tcp::Read(fdsock, 1024);
     creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
     if(string("pong") == root["cmd"].asString()) {
-        cout << "connect server ok." << endl;
+        cout << "Connect to " << config["ip"].asString() << ":" << config["port"].asUInt() << endl;
 
         // create a schedule, to monitor all client
         schedule sch(fdsock);
+
+        // find all rtsp camera, get video frame, and push to server
+        Json::Value rtsp_list = config["rtsp"];
+        for(int i = 0; i < rtsp_list.size(); i++) {
+            cout << rtsp_list[i]["url"].asString() << ":" << rtsp_list[i]["sn"].asString() << endl;
+
+            // require a port from server
+            root.clear();
+            root["cmd"] = "push";
+            root["sn"] = rtsp_list[i]["sn"].asString();
+            tcp::Write(fdsock, root.toStyledString());
+            rsp = tcp::Read(fdsock, 1024);
+            creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
+            dst_port = root["port"].asUInt();
+            if(dst_port) {
+
+
+            } else {
+                cout << "error: " << root["msg"].asString()<< endl;
+            }
+        }
+
+        sch.run();
+        tcp::Close(fdsock);
+        return 0;
+#if 0
         // find all video frame, push to server
         while(1) {
             // require a port from server
@@ -74,12 +106,7 @@ again:
             }
             break;
         }
-        sch.run();
-
-        cout << "connect server error, 10s later restart" << endl;
-        sleep(10);
-        close(fdsock);
-        goto again;
+#endif
     } else {
         cout << "connect server fail." << endl;
     }

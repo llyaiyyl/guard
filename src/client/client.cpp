@@ -28,11 +28,12 @@ client::~client()
 
 void client::run(void)
 {
+
+
+
+
     pthread_create(&tid_, NULL, thread_poll, this);
     cout << "client " << name_ << " has run" << endl;
-
-
-
 }
 
 const char *client::get_name(void)
@@ -65,7 +66,6 @@ void client::send_packet(const void *data, size_t len)
         seq--;
     }
 }
-
 
 void * client::thread_poll(void *pdata)
 {

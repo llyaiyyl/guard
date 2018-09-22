@@ -278,7 +278,17 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             rsp = root.toStyledString();
             write(fd, rsp.c_str(), rsp.size());
         } else if(cmd == string("list")) {
-            // return
+            // return all camera
+            root.clear();
+            list<server_data>::iterator it;
+            pthread_mutex_lock(&lock_);
+            for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
+                root["cam"].append(it->get_node_name());
+            }
+            pthread_mutex_unlock(&lock_);
+
+            rsp = root.toStyledString();
+            write(fd, rsp.c_str(), rsp.size());
         } else {
             root.clear();
             root["cmp"] = "unsuppot";
