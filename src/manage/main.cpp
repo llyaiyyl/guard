@@ -1,13 +1,21 @@
 #include <iostream>
-#include <stdint.h>
-#include <stdio.h>
 
 #include "tcp.h"
 #include "session.h"
 #include "json/json.h"
 
-using namespace std;
+extern "C" {
+#include <stdint.h>
+#include <stdio.h>
 
+#include "libavcodec/avcodec.h"
+#include "libavformat/avformat.h"
+#include "libswscale/swscale.h"
+#include "libavutil/imgutils.h"
+#include "libavdevice/avdevice.h"
+}
+
+using namespace std;
 
 int main(int argc, char * argv[])
 {
@@ -93,6 +101,19 @@ again:
             uint16_t port_test = root["port"].asUInt();
             session * sess = session::create(ip_str, port_test, port_udp);
             bool has_recv = false;
+
+            uint8_t * buff = new uint8_t [300000];
+            int index = 0;
+
+            AVCodecContext * ptr_codec_ctx = NULL;
+            AVCodec * ptr_codec = NULL;
+            AVPacket packet;
+            AVFrame * frame = av_frame_alloc();
+            int ret;
+
+            ptr_codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+            ptr_codec_ctx = avcodec_alloc_context3(ptr_codec);
+            avcodec_open2(ptr_codec_ctx, ptr_codec, NULL);
             while(1) {
                 if(false == has_recv) {
                     sess->SendRawData("ping", 4, true);
@@ -103,13 +124,31 @@ again:
                     do {
                         RTPPacket * pack;
                         while(NULL != (pack = sess->GetNextPacket())) {
-                            cout << pack->GetTimestamp()
-                                 << " " << pack->GetExtensionID()
-                                 << " " << pack->GetPayloadLength() << endl;
-                            sess->DeletePacket(pack);
+                            if(pack->GetExtensionID() == 1) {
+                                // process
+                                cout << "recv: " << index << " bytes" << endl;
 
-                            has_recv = true;
-                            sess->ClearDestinations();
+                                packet.data = buff;
+                                packet.size = index;
+
+                                avcodec_send_packet(ptr_codec_ctx, &packet);
+                                ret = avcodec_receive_frame(ptr_codec_ctx, frame);
+                                if(ret == 0) {
+                                    cout << "frame: " << frame->width << " x " << frame->height << endl;
+                                }
+
+                                // reset
+                                index = 0;
+                            } else {
+                                memcpy(buff + index, pack->GetPayloadData(), pack->GetPayloadLength());
+                                index += pack->GetPayloadLength();
+                            }
+
+                            sess->DeletePacket(pack);
+                            if(false == has_recv) {
+                                has_recv = true;
+                                sess->ClearDestinations();
+                            }
                         }
                     } while(sess->GotoNextSourceWithData());
                 }

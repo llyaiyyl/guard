@@ -48,7 +48,6 @@ void schedule::run()
 
             // close all client
             for(it = list_client_.begin(); it != list_client_.end(); it++) {
-                cout << (*it)->get_name() << " quit" << endl;
                 delete (*it);
             }
             list_client_.clear();

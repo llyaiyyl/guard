@@ -11,60 +11,41 @@
 
 using namespace std;
 
-class server_data
+class push
 {
 public:
-    server_data(int fd, string node_name, uint16_t port_push);
-    ~server_data();
+    push(int fd, session * sess, const string &sn, uint16_t push_port);
+    ~push();
 
-    int get_fd(void) const;
-    string get_node_name(void) const;
-    void set_session(session * sess);
+    string get_sn(void);
     session * get_session(void);
-
-    string get_id(void) const;
-    bool operator ==(const server_data &p) const;
-
-    void poll(void);
-
+    uint16_t get_push_port(void);
+    int get_fd(void);
     void pull_inc(void);
     void pull_dec(void);
+    void poll();
 
-    void get_port_push(uint16_t * port);
 private:
-    char ipstr_[INET_ADDRSTRLEN];
-    uint16_t port_;
-    uint16_t port_push_;
-    int fdsock_;
-    string id_;                  // ip:port
-
+    int fd_;
+    uint16_t push_port_;
     session * sess_;
-    string node_name_;
-
+    string sn_;
     uint32_t pull_num_;
 };
 
-class pull_data
+class pull
 {
 public:
-    pull_data(int fdsock, const string &node_name, uint32_t ip, uint16_t port)
+    pull(int fd, const string &sn, uint32_t ip, uint16_t port)
     {
-        fdsock_ = fdsock;
-        node_name_ = node_name;
+        fd_ = fd;
+        sn_ = sn;
         ip_ = ip;
         port_ = port;
     }
 
-    bool operator ==(const pull_data &p) const
-    {
-        if(fdsock_ == p.fdsock_ && node_name_ == p.node_name_)
-            return true;
-        else
-            return false;
-    }
-
-    int fdsock_;
-    string node_name_;
+    int fd_;
+    string sn_;
     uint32_t ip_;
     uint16_t port_;
 };
@@ -83,16 +64,14 @@ private:
     void on_read(int &fd, void * pdata, const void * rbuff, size_t rn);
     void on_close(int &fd, void * pdata);
 
-    bool sd_poll(void);
-    void sd_reg(const server_data &sd);
-    void sd_set_sess(const string &node_name, session * sess);
-    void sd_del(int fd);
-    void sd_del(int fd, const string &node_name);
-    bool sd_exist(const string &node_name);
+    bool poll(void);
 
-    void sd_add_addr(int fd, const string &node_name, uint32_t ip, uint16_t port);
-    void sd_del_addr(int fd);
-    void sd_get_port(int fd, const string &node_name, uint16_t * port);
+    bool exist(const string &sn);
+    void push_reg(push * p);
+    uint16_t push_get_port(const string &sn);
+    void push_del(int fd);
+    void pull_reg(pull * p);
+    void pull_del(int fd);
 
     static void * thread_poll(void * pdata);
     static void * thread_echo(void * pdata);
@@ -101,14 +80,13 @@ private:
     Json::CharReader * creader_;
 
     pthread_t tid_, tid_udp_;
-    std::list<server_data> list_sd_;
-    std::list<pull_data> list_pd_;
+    std::list<push *> list_push_;
+    std::list<pull *> list_pull_;
 
     uint16_t port_base_;
-    pthread_mutex_t lock_;
-    bool loop_exit_;
-
     uint16_t port_udp_;
+    bool loop_exit_;
+    pthread_mutex_t lock_;
 };
 
 #endif // SERVER_H

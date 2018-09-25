@@ -73,8 +73,13 @@ int main(int argc, char * argv[])
             creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
             dst_port = root["port"].asUInt();
             if(dst_port) {
+                rsp = config["ip"].asString();
+                session * sess = session::create(rsp.c_str(), (uint16_t)dst_port, (uint16_t)(dst_port + 1000));
 
-
+                rsp = rtsp_list[i]["url"].asString();
+                videocap * vc = videocap::create(rsp.c_str(), videocap::url_type_rtsp);
+                if(vc)
+                    sch.reg(new client(root["sn"].asString(), sess, vc));
             } else {
                 cout << "error: " << root["msg"].asString()<< endl;
             }
@@ -83,30 +88,6 @@ int main(int argc, char * argv[])
         sch.run();
         tcp::Close(fdsock);
         return 0;
-#if 0
-        // find all video frame, push to server
-        while(1) {
-            // require a port from server
-            root.clear();
-            root["cmd"] = "push";
-            root["sn"] = sn_str;
-            tcp::Write(fdsock, root.toStyledString());
-            rsp = tcp::Read(fdsock, 1024);
-            creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
-            dst_port = root["port"].asUInt();
-            if(dst_port) {
-                // upstream
-                session * sess = session::create(ip_str, (uint16_t)dst_port, (uint16_t)(dst_port + 1000));
-                sch.reg(new client(string(sn_str), sess));
-
-                cout << "register client: " << sn_str << endl;
-            } else {
-                cout << "error: " << root["msg"].asString()<< endl;
-                return 1;
-            }
-            break;
-        }
-#endif
     } else {
         cout << "connect server fail." << endl;
     }

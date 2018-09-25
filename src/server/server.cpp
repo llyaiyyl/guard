@@ -8,83 +8,58 @@
 
 using namespace std;
 
-
-/*
- *
- * server_data
- *
- */
-server_data::server_data(int fd, string node_name, uint16_t port_push)
+/****************************************
+ * push
+ ***************************************/
+push::push(int fd, session *sess, const string &sn, uint16_t push_port)
 {
-    struct sockaddr_in saddr;
-    socklen_t slen;
-    char buff[24];
-
-    slen = sizeof(struct sockaddr_in);
-    bzero(&saddr, slen);
-    if(0 == getpeername(fd, (struct sockaddr *)&saddr, &slen)) {
-        port_ = ntohs(saddr.sin_port);
-        inet_ntop(saddr.sin_family, &(saddr.sin_addr.s_addr), ipstr_, INET_ADDRSTRLEN);
-    } else {
-        port_ = 0;
-        ipstr_[0] = 0;
-    }
-
-    fdsock_ = fd;
-    sprintf(buff, "%s:%d", ipstr_, port_);
-    id_ = string(buff);
-
-    sess_ = NULL;
-    node_name_ = node_name;
-
-    pull_num_= 0;
-
-    port_push_ = port_push;
+    fd_ = fd;
+    push_port_ = push_port;
+    sess_ = sess;
+    sn_ = sn;
+    pull_num_ = 0;
 }
 
-server_data::~server_data()
+push::~push()
 {
     if(sess_) {
         delete sess_;
         sess_ = NULL;
-        cout << id_ << "-" << node_name_ << " delete" << endl;
     }
 }
 
-int server_data::get_fd() const
+string push::get_sn()
 {
-    return fdsock_;
+    return sn_;
 }
 
-string server_data::get_node_name(void) const
-{
-    return node_name_;
-}
-
-session * server_data::get_session()
+session * push::get_session()
 {
     return sess_;
 }
 
-void server_data::set_session(session * sess)
+uint16_t push::get_push_port()
 {
-    sess_ = sess;
+    return push_port_;
 }
 
-string server_data::get_id(void) const
+int push::get_fd()
 {
-    return id_;
+    return fd_;
 }
 
-bool server_data::operator ==(const server_data &p) const
+void push::pull_inc()
 {
-    if(fdsock_ == p.get_fd() && node_name_ == p.get_node_name())
-        return true;
-    else
-        return false;
+    pull_num_++;
 }
 
-void server_data::poll()
+void push::pull_dec()
+{
+    if(pull_num_)
+        pull_num_--;
+}
+
+void push::poll()
 {
     session * sess = sess_;
     RTPPacket * pack;
@@ -96,9 +71,11 @@ void server_data::poll()
     if(sess->GotoFirstSourceWithData()) {
         do {
             while(NULL != (pack = sess->GetNextPacket())) {
-                cout << id_ << "-" << node_name_ << " " << pack->GetTimestamp()
+#if 0
+                cout << sn_ << " " << pack->GetTimestamp()
                      << " " << pack->GetExtensionID()
                      << " " << pack->GetPayloadLength() << endl;
+#endif
                 list_ppk_.push_back(pack);
             }
         } while(sess->GotoNextSourceWithData());
@@ -118,40 +95,21 @@ void server_data::poll()
     }
 }
 
-void server_data::pull_inc()
-{
-    pull_num_++;
-}
-
-void server_data::pull_dec()
-{
-    if(pull_num_)
-        pull_num_--;
-}
-
-void server_data::get_port_push(uint16_t *port)
-{
-    *port = port_push_;
-}
-
-
-
-/*
- *
+/****************************************
  * Server
- *
- */
+ ***************************************/
 server::server(uint16_t port_udp)
     : event_handler()
 {
     Json::CharReaderBuilder builder;
     creader_ = builder.newCharReader();
 
-    port_base_ = 5000;
-    loop_exit_ = false;
     tid_ = 0;
     tid_udp_ = 0;
+
+    port_base_ = 5000;
     port_udp_ = port_udp;
+    loop_exit_ = false;
 
     pthread_mutex_init(&lock_, NULL);
 }
@@ -161,14 +119,20 @@ server::~server()
     if(0 != tid_) {
         loop_exit_ = true;
         pthread_join(tid_, NULL);
+        tid_ = 0;
     }
 
     if(0 != tid_udp_) {
         pthread_cancel(tid_udp_);
         pthread_join(tid_udp_, NULL);
+        tid_udp_ = 0;
     }
 
-    delete creader_;
+    if(creader_) {
+        delete creader_;
+        creader_ = NULL;
+    }
+
     pthread_mutex_destroy(&lock_);
 }
 
@@ -184,7 +148,6 @@ void server::run()
     }
 }
 
-
 // privata function
 void server::on_connect(int &fd, void **pdata)
 {
@@ -193,12 +156,10 @@ void server::on_connect(int &fd, void **pdata)
 
 void server::on_close(int &fd, void *pdata)
 {
-    cout << "push client number: " << list_sd_.size() << endl;
-    cout << "pull client number: " << list_pd_.size() << endl;
-    sd_del(fd);
-    sd_del_addr(fd);
-    cout << "now push client number: " << list_sd_.size() << endl;
-    cout << "now pull client number: " << list_pd_.size() << endl;
+    pull_del(fd);
+    push_del(fd);
+    cout << "now push client number: " << list_push_.size() << endl;
+    cout << "now pull client number: " << list_pull_.size() << endl;
 
     std::cout << "client close: " << get_id(fd) << std::endl;
 }
@@ -208,12 +169,10 @@ void server::on_read_err(int &fd, void *pdata, int err)
     errno = err;
     perror("on_read_err");
 
-    cout << "push client number: " << list_sd_.size() << endl;
-    cout << "pull client number: " << list_pd_.size() << endl;
-    sd_del(fd);
-    sd_del_addr(fd);
-    cout << "now push client number: " << list_sd_.size() << endl;
-    cout << "now pull client number: " << list_pd_.size() << endl;
+    pull_del(fd);
+    push_del(fd);
+    cout << "now push client number: " << list_push_.size() << endl;
+    cout << "now pull client number: " << list_pull_.size() << endl;
 
     std::cout << "client read error: " << get_id(fd) << std::endl;
 }
@@ -227,152 +186,81 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
     rsp = string((char *)rbuff, rn);
     creader_->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
 
-    if(string("ping") == root["cmd"].asString()) {
+    string cmd = root["cmd"].asString();
+    if(cmd == string("ping")) {
         root.clear();
         root["cmd"] = "pong";
-        rsp = root.toStyledString();
-        write(fd, rsp.c_str(), rsp.size());
-    } else {
-        string cmd = root["cmd"].asString();
-        if(cmd == string("push")) {
-            // check the sess has exist
-            if(sd_exist(root["sn"].asString()) == false) {
-                // register push sess
-                session * sess = session::create(NULL, 0, port_base_);
-                sd_reg(server_data(fd, root["sn"].asString(), port_base_));
-                sd_set_sess(root["sn"].asString(), sess);
+    } else if(cmd == string("push")) {
+        if(exist(root["sn"].asString()) == false) {
+            session * sess = session::create(NULL, 0, port_base_);
+            push * p = new push(fd, sess, root["sn"].asString(), port_base_);
+            push_reg(p);
 
-                root.clear();
-                root["port"] = port_base_;
-                rsp = root.toStyledString();
-                write(fd, rsp.c_str(), rsp.size());
-
-                port_base_ += 2;
-
-                cout << "push client number: " << list_sd_.size() << endl;
-            } else {
-                root.clear();
-                root["port"] = 0;
-                root["msg"] = "node name/sn of client exist";
-                rsp = root.toStyledString();
-                write(fd, rsp.c_str(), rsp.size());
-            }
-        } else if(cmd == string("pull")) {
-            if(sd_exist(root["sn"].asString()) == true) {
-                uint16_t port;
-
-                sd_add_addr(fd, root["sn"].asString(), root["ip"].asUInt(), uint16_t(root["port"].asUInt()));
-                sd_get_port(fd, root["sn"].asString(), &port);
-
-                root.clear();
-                root["status"] = 0;
-                root["msg"] = "pull ok";
-                root["port"] = port;
-
-                cout << "pull client number: " << list_pd_.size() << endl;
-            } else {
-                root.clear();
-                root["status"] = 1;
-                root["msg"] = "can't find node name/sn";
-            }
-            rsp = root.toStyledString();
-            write(fd, rsp.c_str(), rsp.size());
-        } else if(cmd == string("list")) {
-            // return all camera
             root.clear();
-            list<server_data>::iterator it;
-            pthread_mutex_lock(&lock_);
-            for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-                root["cam"].append(it->get_node_name());
-            }
-            pthread_mutex_unlock(&lock_);
+            root["port"] = port_base_;
 
-            rsp = root.toStyledString();
-            write(fd, rsp.c_str(), rsp.size());
+            port_base_ += 2;
         } else {
             root.clear();
-            root["cmp"] = "unsuppot";
-            rsp = root.toStyledString();
-            write(fd, rsp.c_str(), rsp.size());
-
-            // need to close client
-            sd_del(fd);
-            fd = -1;
+            root["port"] = 0;
+            root["msg"] = "node name/sn of client exist";
         }
+    } else if(cmd == string("pull")) {
+        if(exist(root["sn"].asString()) == true) {
+            pull * p = new pull(fd, root["sn"].asString(), root["ip"].asUInt(), uint16_t(root["port"].asUInt()));
+            pull_reg(p);
+
+            uint16_t port = push_get_port(root["sn"].asString());
+
+            root.clear();
+            root["status"] = 0;
+            root["msg"] = "pull ok";
+            root["port"] = port;
+        } else {
+            root.clear();
+            root["status"] = 1;
+            root["msg"] = "can't find node name/sn";
+        }
+    } else if(cmd == string("list")) {
+        root.clear();
+        list<push *>::iterator it;
+        pthread_mutex_lock(&lock_);
+        for(it = list_push_.begin(); it != list_push_.end(); it++) {
+            root["cam"].append((*it)->get_sn());
+        }
+        pthread_mutex_unlock(&lock_);
+    } else {
+        root.clear();
+        root["cmp"] = "unsuppot";
     }
+
+    rsp = root.toStyledString();
+    write(fd, rsp.c_str(), rsp.size());
+
+    cout << "push client number: " << list_push_.size() << endl;
+    cout << "pull client number: " << list_pull_.size() << endl;
 }
 
-bool server::sd_poll(void)
+bool server::poll(void)
 {
-    list<server_data>::iterator it;
+    list<push *>::iterator it;
 
     pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        it->poll();
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        (*it)->poll();
     }
     pthread_mutex_unlock(&lock_);
 
     return loop_exit_;
 }
 
-void server::sd_reg(const server_data &sd)
+bool server::exist(const string &sn)
 {
-    pthread_mutex_lock(&lock_);
-    list_sd_.push_back(sd);
-    pthread_mutex_unlock(&lock_);
-}
-
-void server::sd_set_sess(const string &node_name, session *sess)
-{
-    list<server_data>::iterator it;
+    list<push *>::iterator it;
 
     pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(node_name == it->get_node_name()) {
-            it->set_session(sess);
-            break;
-        }
-    }
-    pthread_mutex_unlock(&lock_);
-}
-
-void server::sd_del(int fd)
-{
-    list<server_data>::iterator it;
-
-    pthread_mutex_lock(&lock_);
-again:
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(fd == it->get_fd()) {
-            list_sd_.remove(*it);
-            goto again;
-        }
-    }
-    pthread_mutex_unlock(&lock_);
-}
-
-void server::sd_del(int fd, const string &node_name)
-{
-    list<server_data>::iterator it;
-
-    pthread_mutex_lock(&lock_);
-again:
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(fd == it->get_fd() && node_name == it->get_node_name()) {
-            list_sd_.remove(*it);
-            goto again;
-        }
-    }
-    pthread_mutex_unlock(&lock_);
-}
-
-bool server::sd_exist(const string &node_name)
-{
-    list<server_data>::iterator it;
-
-    pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(node_name == it->get_node_name()) {
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if(sn == (*it)->get_sn()) {
             pthread_mutex_unlock(&lock_);
             return true;
         }
@@ -382,57 +270,83 @@ bool server::sd_exist(const string &node_name)
     return false;
 }
 
-void server::sd_add_addr(int fd, const string &node_name, uint32_t ip, uint16_t port)
+void server::push_reg(push *p)
 {
-    list<server_data>::iterator it;
-
     pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(node_name == it->get_node_name()) {
-            session * sess = it->get_session();
-            sess->AddDestination(RTPIPv4Address(ip, port));
-            it->pull_inc();
-            cout << "add: " << ip << "-" << port << endl;
-        }
-    }
-
-    list_pd_.push_back(pull_data(fd, node_name, ip, (uint16_t)port));
+    list_push_.push_back(p);
     pthread_mutex_unlock(&lock_);
 }
 
-void server::sd_del_addr(int fd)
+uint16_t server::push_get_port(const string &sn)
 {
-    list<pull_data>::iterator it;
-    list<server_data>::iterator it_sub;
+    list<push *>::iterator it;
+    pthread_mutex_lock(&lock_);
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if(sn == (*it)->get_sn()) {
+            uint16_t port = (*it)->get_push_port();
+            pthread_mutex_unlock(&lock_);
+            return port;
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+
+    return 0;
+}
+
+void server::push_del(int fd)
+{
+    list<push *>::iterator it;
 
     pthread_mutex_lock(&lock_);
 again:
-    for(it = list_pd_.begin(); it != list_pd_.end(); it++) {
-        if(fd == it->fdsock_) {
-            for(it_sub = list_sd_.begin(); it_sub != list_sd_.end(); it_sub++) {
-                if(it->node_name_ == it_sub->get_node_name()) {
-                    session * sess = it_sub->get_session();
-                    sess->DeleteDestination(RTPIPv4Address(it->ip_, it->port_));
-                    it_sub->pull_dec();
-                }
-            }
-
-            list_pd_.remove(*it);
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if(fd == (*it)->get_fd()) {
+            list_push_.remove(*it);
             goto again;
         }
     }
     pthread_mutex_unlock(&lock_);
 }
 
-void server::sd_get_port(int fd, const string &node_name, uint16_t *port)
+void server::pull_reg(pull *p)
 {
-    list<server_data>::iterator it;
+    list<push *>::iterator it;
 
     pthread_mutex_lock(&lock_);
-    for(it = list_sd_.begin(); it != list_sd_.end(); it++) {
-        if(node_name == it->get_node_name()) {
-            it->get_port_push(port);
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if((*it)->get_sn() == p->sn_) {
+            session * sess = (*it)->get_session();
+            sess->AddDestination(RTPIPv4Address(p->ip_, p->port_));
+            (*it)->pull_inc();
             break;
+        }
+    }
+
+    list_pull_.push_back(p);
+
+    pthread_mutex_unlock(&lock_);
+}
+
+void server::pull_del(int fd)
+{
+    list<pull *>::iterator it;
+    list<push *>::iterator it_sub;
+
+    pthread_mutex_lock(&lock_);
+again:
+    for(it = list_pull_.begin(); it != list_pull_.end(); it++) {
+        if(fd == (*it)->fd_) {
+            for(it_sub = list_push_.begin(); it_sub != list_push_.end(); it_sub++) {
+                if((*it)->sn_ == (*it_sub)->get_sn()) {
+                    session * sess = (*it_sub)->get_session();
+                    sess->DeleteDestination(RTPIPv4Address((*it)->ip_, (*it)->port_));
+                    (*it_sub)->pull_dec();
+                    break;
+                }
+            }
+
+            list_pull_.remove(*it);
+            goto again;
         }
     }
     pthread_mutex_unlock(&lock_);
@@ -443,7 +357,7 @@ void * server::thread_poll(void *pdata)
     server * s = (server *)pdata;
     bool exit = false;
     while(!exit) {
-        exit = s->sd_poll();
+        exit = s->poll();
 
         // wait 10ms
         RTPTime::Wait(RTPTime(0, 10 * 1000));

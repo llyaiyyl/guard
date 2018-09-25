@@ -3,13 +3,17 @@
 
 #include "client.h"
 
-client::client(string name, session *sess)
+using namespace std;
+
+client::client(const std::string &sn, session *sess, videocap *vc)
 {
+    sn_ = sn;
     sess_ = sess;
+    vc_ = vc;
+
     tid_ = 0;
     loop_exit_ = false;
-    name_ = name;
-    max_ = 423;
+    packet_max_ = 1200;
 }
 
 client::~client()
@@ -17,50 +21,53 @@ client::~client()
     if(tid_) {
         loop_exit_ = true;
         pthread_join(tid_, NULL);
-
         tid_ = 0;
         loop_exit_ = false;
+    }
 
+    if(sess_) {
         delete sess_;
         sess_ = NULL;
+    }
+
+    if(vc_) {
+        delete vc_;
+        vc_ = NULL;
     }
 }
 
 void client::run(void)
 {
-
-
-
-
     pthread_create(&tid_, NULL, thread_poll, this);
-    cout << "client " << name_ << " has run" << endl;
+    cout << "client " << sn_ << " has run" << endl;
 }
 
-const char *client::get_name(void)
+videocap * client::get_videocap()
 {
-    return name_.c_str();
+    return vc_;
 }
+
 
 void client::send_packet(const void *data, size_t len)
 {
     int seq, index;
     const uint8_t * ptr = (const uint8_t *)data;
 
-    if((len % max_) == 0) {
-        seq = len / max_;
+    if((len % packet_max_) == 0) {
+        seq = len / packet_max_;
     } else {
-        seq = (len / max_) + 1;
+        seq = (len / packet_max_) + 1;
     }
 
     index = 0;
     while(len) {
-        if(len <= max_) {
+        if(len <= packet_max_) {
             sess_->SendPacketEx((const void *)(ptr + index), len, 96, false, 10, seq, NULL, 0);
             break;
         } else {
-            sess_->SendPacketEx((const void *)(ptr + index), max_, 96, false, 0, seq, NULL, 0);
-            len -= max_;
-            index += max_;
+            sess_->SendPacketEx((const void *)(ptr + index), packet_max_, 96, false, 0, seq, NULL, 0);
+            len -= packet_max_;
+            index += packet_max_;
         }
 
         seq--;
@@ -69,13 +76,15 @@ void client::send_packet(const void *data, size_t len)
 
 void * client::thread_poll(void *pdata)
 {
+    AVPacket packet;
     client * ptr = (client *)pdata;
-    char sbuff[1024];
+    videocap * vc = ptr->get_videocap();
 
     while(ptr->loop_exit_ == false) {
-        ptr->send_packet(sbuff, 1024);
-        cout << "send 1024 bytes" << endl;
-        RTPTime::Wait(RTPTime(0, 50 * 1000));
+        vc->read_packet(&packet);
+        ptr->send_packet(packet.data, packet.size);
+        cout << "send packet: " << packet.size << endl;
+        av_packet_unref(&packet);
     }
 
     pthread_exit((void *)0);

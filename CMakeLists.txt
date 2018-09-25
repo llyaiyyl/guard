@@ -33,19 +33,14 @@ add_executable(guard-client ${CLIENT_SRCS} ${COMMON_SRCS})
 add_executable(guard-manage ${MANAGE_SRCS} ${COMMON_SRCS})
 
 target_link_libraries(guard-server libjrtp.a libjthread.a libcoco.a libjsoncpp.a
-    libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
+    libavformat.a libavdevice.a libavfilter.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
     pthread)
 target_link_libraries(guard-client libjrtp.a libjthread.a libcoco.a libjsoncpp.a
-    libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
+    libavformat.a libavdevice.a libavfilter.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
     pthread)
 target_link_libraries(guard-manage libjrtp.a libjthread.a libcoco.a libjsoncpp.a
-    libavfilter.a libavformat.a libavdevice.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
+    libavformat.a libavdevice.a libavfilter.a libavcodec.a libswscale.a libavutil.a libswresample.a libz.a m
     pthread)
-
-
-
-
-
 
 
 

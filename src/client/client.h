@@ -2,30 +2,33 @@
 #define CLIENT_H
 
 #include <iostream>
+#include <string>
 #include <pthread.h>
-#include "session.h"
 
-using namespace std;
+#include "session.h"
+#include "videocap.h"
 
 class client
 {
 public:
-    client(string name, session * sess);
+    client(const std::string &sn, session * sess, videocap * vc);
     ~client();
 
     void run(void);
-    const char * get_name(void);
+    videocap * get_videocap(void);
 
-    void send_packet(const void * data, size_t len);
 private:
+    void send_packet(const void * data, size_t len);
     static void * thread_poll(void * pdata);
 
 private:
+    std::string sn_;
     session * sess_;
+    videocap * vc_;
+
     pthread_t tid_;
     bool loop_exit_;
-    string name_;
-    size_t max_;
+    size_t packet_max_;
 };
 
 #endif // SENDER_H
