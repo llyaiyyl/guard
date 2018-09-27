@@ -2,16 +2,20 @@
 
 using namespace std;
 
-videocap::videocap(AVFormatContext * ptr_format_ctx, AVCodecContext * ptr_codec_ctx, AVCodec * ptr_codec)
+videocap::videocap(AVFormatContext * ptr_format_ctx, AVCodecContext * ptr_codec_ctx, AVCodec * ptr_codec, int video_stream, int audio_stream,
+                   int fps, int width, int height, int pix_fmt, int codec_id)
 {
     ptr_format_ctx_ = ptr_format_ctx;
     ptr_codec_ctx_ = ptr_codec_ctx;
     ptr_codec_ = ptr_codec;
 
-    codec_id_ = AV_CODEC_ID_NONE;
-    fps_ = 0;
-    width_ = 0;
-    height_ = 0;
+    video_stream_ = video_stream;
+    audio_stream_ = audio_stream;
+    fps_ = fps;
+    width_ = width;
+    height_ = height;
+    pix_fmt_ = pix_fmt;
+    codec_id_ = codec_id;
 }
 
 videocap::~videocap()
@@ -33,7 +37,7 @@ videocap * videocap::create(const char *url, videocap::url_type type)
     AVCodecContext * ptr_codec_ctx = NULL;
     AVCodec * ptr_codec = NULL;
     AVDictionary * opts = NULL;
-    int video_stream, fps;
+    int video_stream, audio_stream, fps;
     int ret;
 
     if(videocap::url_type_rtsp == type) {
@@ -58,6 +62,7 @@ videocap * videocap::create(const char *url, videocap::url_type type)
     }
     av_dump_format(ptr_format_ctx, 0, url, 0);
 
+    // find video stream
     video_stream = -1;
     for(uint32_t i = 0; i < ptr_format_ctx->nb_streams; i++) {
         if(ptr_format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -70,6 +75,18 @@ videocap * videocap::create(const char *url, videocap::url_type type)
         goto err0;
     }
     fps = (ptr_format_ctx->streams[video_stream]->avg_frame_rate.num) * 1.0 / ptr_format_ctx->streams[video_stream]->avg_frame_rate.den;
+
+    // find audio stream
+    audio_stream = -1;
+    for(uint32_t i = 0; i < ptr_format_ctx->nb_streams; i++) {
+        if(ptr_format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            audio_stream = i;
+            break;
+        }
+    }
+    if(audio_stream == -1) {
+        cout << "can't find audio stream" << endl;
+    }
 
     ptr_codec = avcodec_find_decoder(ptr_format_ctx->streams[video_stream]->codecpar->codec_id);
     if(NULL == ptr_codec) {
@@ -89,7 +106,8 @@ videocap * videocap::create(const char *url, videocap::url_type type)
          <<" codec_id: " << ptr_format_ctx->streams[video_stream]->codecpar->codec_id
          <<" fps: " << fps << endl;
 
-    return new videocap(ptr_format_ctx, ptr_codec_ctx, ptr_codec);
+    return new videocap(ptr_format_ctx, ptr_codec_ctx, ptr_codec, video_stream, audio_stream,
+                        fps, ptr_codec_ctx->width, ptr_codec_ctx->height, ptr_codec_ctx->pix_fmt, ptr_format_ctx->streams[video_stream]->codecpar->codec_id);
 
 err0:
     avformat_close_input(&ptr_format_ctx);

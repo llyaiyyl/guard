@@ -18,6 +18,8 @@ session::session(uint32_t dst_ip, uint16_t dst_port, uint16_t src_port, bool use
 
     transparams.SetBindIP(0);
     transparams.SetPortbase(src_port);
+    transparams.SetRTPSendBuffer(300000);
+    transparams.SetRTPReceiveBuffer(300000);
 
     ret = this->Create(sessparams, &transparams);
     log_error(ret);

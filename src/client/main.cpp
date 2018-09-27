@@ -64,24 +64,34 @@ int main(int argc, char * argv[])
         for(int i = 0; i < rtsp_list.size(); i++) {
             cout << rtsp_list[i]["url"].asString() << ":" << rtsp_list[i]["sn"].asString() << endl;
 
-            // require a port from server
-            root.clear();
-            root["cmd"] = "push";
-            root["sn"] = rtsp_list[i]["sn"].asString();
-            tcp::Write(fdsock, root.toStyledString());
-            rsp = tcp::Read(fdsock, 1024);
-            creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
-            dst_port = root["port"].asUInt();
-            if(dst_port) {
-                rsp = config["ip"].asString();
-                session * sess = session::create(rsp.c_str(), (uint16_t)dst_port, (uint16_t)(dst_port + 1000));
+            rsp = rtsp_list[i]["url"].asString();
+            videocap * vc = videocap::create(rsp.c_str(), videocap::url_type_rtsp);
+            if(vc) {
+                // require a port from server
+                root.clear();
+                root["cmd"] = "push";
+                root["sn"] = rtsp_list[i]["sn"].asString();
 
-                rsp = rtsp_list[i]["url"].asString();
-                videocap * vc = videocap::create(rsp.c_str(), videocap::url_type_rtsp);
-                if(vc)
+                Json::Value v;
+                v["width"] = vc->get_width();
+                v["height"] = vc->get_height();
+                v["fps"] = vc->get_fps();
+                v["pix_fmt"] = vc->get_pix_fmt();
+                v["codec_id"] = vc->get_codec_id();
+
+                root["videoinfo"] = v;
+                tcp::Write(fdsock, root.toStyledString());
+
+                rsp = tcp::Read(fdsock, 1024);
+                creader->parse(rsp.c_str(), rsp.c_str() + rsp.size(), &root, NULL);
+                dst_port = root["port"].asUInt();
+                if(dst_port) {
+                    rsp = config["ip"].asString();
+                    session * sess = session::create(rsp.c_str(), (uint16_t)dst_port, (uint16_t)(dst_port + 1000));
                     sch.reg(new client(root["sn"].asString(), sess, vc));
-            } else {
-                cout << "error: " << root["msg"].asString()<< endl;
+                } else {
+                    cout << "error: " << root["msg"].asString()<< endl;
+                }
             }
         }
 

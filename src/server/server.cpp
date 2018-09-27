@@ -151,7 +151,7 @@ void server::run()
 // privata function
 void server::on_connect(int &fd, void **pdata)
 {
-    std::cout << "client connect: " << get_id(fd) << std::endl;
+    std::cout << "client connect: " << get_client_addrs(fd) << std::endl;
 }
 
 void server::on_close(int &fd, void *pdata)
@@ -161,7 +161,7 @@ void server::on_close(int &fd, void *pdata)
     cout << "now push client number: " << list_push_.size() << endl;
     cout << "now pull client number: " << list_pull_.size() << endl;
 
-    std::cout << "client close: " << get_id(fd) << std::endl;
+    std::cout << "client close: " << get_client_addrs(fd) << std::endl;
 }
 
 void server::on_read_err(int &fd, void *pdata, int err)
@@ -174,7 +174,7 @@ void server::on_read_err(int &fd, void *pdata, int err)
     cout << "now push client number: " << list_push_.size() << endl;
     cout << "now pull client number: " << list_pull_.size() << endl;
 
-    std::cout << "client read error: " << get_id(fd) << std::endl;
+    std::cout << "client read error: " << get_client_addrs(fd) << std::endl;
 }
 
 void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
@@ -191,14 +191,16 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
         root.clear();
         root["cmd"] = "pong";
     } else if(cmd == string("push")) {
+        cout << root.toStyledString() << endl;
+
         if(exist(root["sn"].asString()) == false) {
             session * sess = session::create(NULL, 0, port_base_);
             push * p = new push(fd, sess, root["sn"].asString(), port_base_);
             push_reg(p);
+            push_set_videoinfo(root["sn"].asString(), root["videoinfo"]);
 
             root.clear();
             root["port"] = port_base_;
-
             port_base_ += 2;
         } else {
             root.clear();
@@ -211,11 +213,13 @@ void server::on_read(int &fd, void *pdata, const void *rbuff, size_t rn)
             pull_reg(p);
 
             uint16_t port = push_get_port(root["sn"].asString());
+            Json::Value v = push_get_videoinfo(root["sn"].asString());
 
             root.clear();
             root["status"] = 0;
             root["msg"] = "pull ok";
             root["port"] = port;
+            root["videoinfo"] = v;
         } else {
             root.clear();
             root["status"] = 1;
@@ -291,6 +295,57 @@ uint16_t server::push_get_port(const string &sn)
     pthread_mutex_unlock(&lock_);
 
     return 0;
+}
+
+void server::push_set_videoinfo(const string &sn, const Json::Value &v)
+{
+    list<push *>::iterator it;
+    pthread_mutex_lock(&lock_);
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if(sn == (*it)->get_sn()) {
+            int tmp;
+
+            tmp = v["fps"].asInt();
+            (*it)->set_fps(tmp);
+
+            tmp = v["width"].asInt();
+            (*it)->set_width(tmp);
+
+            tmp = v["height"].asInt();
+            (*it)->set_height(tmp);
+
+            tmp = v["pix_fmt"].asInt();
+            (*it)->set_pix_fmt(tmp);
+
+            tmp = v["codec_id"].asInt();
+            (*it)->set_codec_id(tmp);
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+}
+
+Json::Value server::push_get_videoinfo(const string &sn)
+{
+    Json::Value v;
+    list<push *>::iterator it;
+
+    pthread_mutex_lock(&lock_);
+    for(it = list_push_.begin(); it != list_push_.end(); it++) {
+        if(sn == (*it)->get_sn()) {
+            v["fps"] = (*it)->get_fps();
+            v["width"] = (*it)->get_width();
+            v["height"] = (*it)->get_height();
+            v["pix_fmt"] = (*it)->get_pix_fmt();
+            v["codec_id"] = (*it)->get_codec_id();
+            v["status"] = 0;
+            pthread_mutex_unlock(&lock_);
+            return v;
+        }
+    }
+    pthread_mutex_unlock(&lock_);
+
+    v["status"] = -1;
+    return v;
 }
 
 void server::push_del(int fd)
@@ -402,7 +457,7 @@ void * server::thread_echo(void *pdata)
     }
 }
 
-string server::get_id(int fd)
+string server::get_client_addrs(int fd)
 {
     struct sockaddr_in saddr;
     socklen_t slen;

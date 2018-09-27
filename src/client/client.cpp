@@ -79,12 +79,23 @@ void * client::thread_poll(void *pdata)
     AVPacket packet;
     client * ptr = (client *)pdata;
     videocap * vc = ptr->get_videocap();
+    int video_stream, audio_stream, ret;
 
+    video_stream = vc->get_video_stream();
+    audio_stream = vc->get_audio_stream();
     while(ptr->loop_exit_ == false) {
-        vc->read_packet(&packet);
-        ptr->send_packet(packet.data, packet.size);
-        cout << "send packet: " << packet.size << endl;
-        av_packet_unref(&packet);
+        ret = vc->read_packet(&packet);
+        if(0 == ret) {
+            if(packet.stream_index == video_stream) {
+                ptr->send_packet(packet.data, packet.size);
+                // cout << "send packet: " << packet.size << endl;
+            } else if (packet.stream_index == audio_stream) {
+                // cout << "get audio frame" << endl;
+            }
+
+            av_packet_unref(&packet);
+        } else
+            cout << "read packet error: " << ret << endl;
     }
 
     pthread_exit((void *)0);

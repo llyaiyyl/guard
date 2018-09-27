@@ -125,16 +125,19 @@ again:
                         RTPPacket * pack;
                         while(NULL != (pack = sess->GetNextPacket())) {
                             if(pack->GetExtensionID() == 1) {
-                                // process
-                                cout << "recv: " << index << " bytes" << endl;
+                                memcpy(buff + index, pack->GetPayloadData(), pack->GetPayloadLength());
+                                index += pack->GetPayloadLength();
 
+                                // process
+                                // cout << "recv: " << index << " bytes" << endl;
+                                av_init_packet(&packet);
                                 packet.data = buff;
                                 packet.size = index;
 
                                 avcodec_send_packet(ptr_codec_ctx, &packet);
                                 ret = avcodec_receive_frame(ptr_codec_ctx, frame);
                                 if(ret == 0) {
-                                    cout << "frame: " << frame->width << " x " << frame->height << endl;
+                                    // cout << "frame: " << frame->width << " x " << frame->height << endl;
                                 }
 
                                 // reset
