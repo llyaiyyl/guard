@@ -66,6 +66,7 @@ int main(int argc, char * argv[])
 
             rsp = rtsp_list[i]["url"].asString();
             videocap * vc = videocap::create(rsp.c_str(), videocap::url_type_rtsp);
+            // videocap * vc = videocap::create("./VideoDemo.mp4", videocap::url_type_file);
             if(vc) {
                 // require a port from server
                 root.clear();
